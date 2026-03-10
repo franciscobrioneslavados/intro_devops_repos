@@ -62,3 +62,12 @@ Cada subcarpeta incluye un `README.md` con pasos específi cos de desarrollo, lo
 4. Ejecuta el contenedor especificando `-p <host>:<container>`; para Podman además agrega `--network webapps`.
 5. Confirma que el navegador/`curl` accede al puerto indicado.
 6. Cuando termines, usa los comandos de parada/limpieza para liberar recursos.
+
+---
+## 5. Automatizar builds con GitHub Actions
+1. Crea una rama de despliegue (por ejemplo `deploy`) que contenga los artefactos prometidos y el archivo de workflow `.github/workflows/build-and-push.yml`.
+2. El workflow se dispara en `main` y en `deploy` y construye cada imagen listada (Express, ASP.NET Core, Flask, Django y Nginx) usando `docker/build-push-action@v4`.
+3. Define los secretos de GitHub necesarios antes de activar el workflow:
+   - `DOCKERHUB_USERNAME`: tu usuario o namespace en Docker Hub (usado como repositorio).
+   - `DOCKERHUB_TOKEN`: token de acceso generado desde https://hub.docker.com/settings/security.
+4. Cada vez que envíes cambios a `deploy` (o hagas `workflow_dispatch`), la acción compila las imágenes de cada carpeta y las sube a `${DOCKERHUB_USERNAME}/<imagen>:latest`. Ajusta las etiquetas en el workflow si necesitas versiones específicas o tags adicionales.

@@ -1,0 +1,51 @@
+name: Build and push container images
+
+on:
+  push:
+    branches:
+      - deploy
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    name: Build and push
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_NAMESPACE: ${{ secrets.DOCKERHUB_USERNAME }}
+    strategy:
+      matrix:
+        include:
+          - example: express
+            context: express_example
+            image: express-example
+          - example: netcore
+            context: netcore_example
+            image: netcore-example
+          - example: flask
+            context: flask_example
+            image: flask-example
+          - example: django
+            context: django_example
+            image: django-example
+          - example: nginx
+            context: nginx_example
+            image: nginx-static
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v4
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ env.DOCKER_NAMESPACE }}/${{ matrix.image }}:latest
