@@ -9,7 +9,9 @@
     "test:cov": "nyc node test.js"
   },
   "dependencies": {
-    "express": "^4.22.1",
+    "express": "^4.22.1"
+  },
+  "devDependencies": {
     "nyc": "^18.0.0"
   },
   "nyc": {
