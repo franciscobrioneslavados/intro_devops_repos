@@ -62,7 +62,7 @@ jobs:
 
       - name: Install Flask requirements
         if: ${{ matrix.example == 'flask' }}
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt pytest-cov
         working-directory: flask_example
 
       - name: Run Flask pytest with coverage
