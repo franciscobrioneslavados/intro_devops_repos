@@ -66,7 +66,7 @@ Cada subcarpeta incluye un `README.md` con pasos específi cos de desarrollo, lo
 ---
 ## 5. Automatizar builds con GitHub Actions
 1. Crea una rama de despliegue (por ejemplo `deploy`) que contenga los artefactos prometidos y el archivo de workflow `.github/workflows/build-and-push.yml`.
-2. El workflow se dispara en `main` y en `deploy` y construye cada imagen listada (Express, ASP.NET Core, Flask, Django y Nginx) usando `docker/build-push-action@v4`.
+2. El workflow se dispara en `main`, `deploy` y `test`; antes de buildear las imágenes ejecuta los tests/coverage de Express y Flask (`npm test`, `npm run coverage`, `pytest --cov=app ...`). Además publica los artefactos de cobertura (`coverage/lcov.info` para Express y `coverage.xml`/`coverage.json` para Flask) para que puedas descargarlos desde la ejecución fallida o exitosa del pipeline.
 3. Define los secretos de GitHub necesarios antes de activar el workflow:
    - `DOCKERHUB_USERNAME`: tu usuario o namespace en Docker Hub (usado como repositorio).
    - `DOCKERHUB_TOKEN`: token de acceso generado desde https://hub.docker.com/settings/security.

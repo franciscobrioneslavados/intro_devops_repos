@@ -64,3 +64,7 @@ Guía sencilla para crear una API mínima con Express y contenerizarla con Docke
 
 - Mantén el código en `index.js` y `package.json` al mismo nivel que el `Dockerfile`.
 - Para cambiar el puerto expuesto, actualiza `EXPOSE` y el mapeo `-p`.
+## Pruebas unitarias y cobertura
+
+- Instala las dependencias (`npm install`) y ejecuta `npm test`. El script `test.js` invoca `app.handle` directamente para evitar abrir puertos en el sandbox y verifica el saludo de `/`.
+- Para ver cobertura, ejecuta `npm run coverage`; `nyc` instrumenta `index.js`, genera reporte `text` + `lcov` y se puede usar `coverage/lcov.info` con herramientas externas.

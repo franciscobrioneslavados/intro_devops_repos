@@ -5,10 +5,22 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test.js",
+    "test:cov": "nyc node test.js"
   },
   "dependencies": {
-    "express": "^4.22.1"
+    "express": "^4.22.1",
+    "nyc": "^18.0.0"
+  },
+  "nyc": {
+    "reporter": [
+      "text",
+      "lcov"
+    ],
+    "all": true,
+    "include": [
+      "index.js"
+    ]
   },
   "description": "## Objetivo Guía sencilla para crear una API mínima con Express y contenerizarla con Docker o Podman.",
   "main": "index.js",

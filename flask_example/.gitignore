@@ -4,3 +4,7 @@ __pycache__/
 *.py[cod]
 *.log
 .env
+.pytest_cache/
+coverage/
+coverage.xml
+coverage.json

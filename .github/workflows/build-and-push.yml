@@ -4,10 +4,80 @@ on:
   push:
     branches:
       - deploy
+      - test
   workflow_dispatch:
 
 jobs:
+  tests:
+    name: Run unit tests and coverage
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example: [express, flask]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js (Express)
+        if: ${{ matrix.example == 'express' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install Express deps
+        if: ${{ matrix.example == 'express' }}
+        run: |
+          cd express_example
+          npm ci
+
+      - name: Run Express tests and coverage
+        if: ${{ matrix.example == 'express' }}
+        run: |
+          cd express_example
+          npm test
+          npm run test:cov
+
+      - name: Upload Express coverage artifacts
+        if: ${{ matrix.example == 'express' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: express-coverage
+          path: |
+            express_example/coverage/lcov.info
+            express_example/coverage/coverage-final.json
+
+
+      - name: Set up Python (Flask)
+        if: ${{ matrix.example == 'flask' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install Flask deps
+        if: ${{ matrix.example == 'flask' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r flask_example/requirements.txt
+
+      - name: Run Flask pytest with coverage
+        if: ${{ matrix.example == 'flask' }}
+        run: |
+          cd flask_example
+          pytest --maxfail=1 --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-report=json:coverage.json tests
+
+      - name: Upload Flask coverage artifacts
+        if: ${{ matrix.example == 'flask' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flask-coverage
+          path: |
+            flask_example/coverage.xml
+            flask_example/coverage.json
+
   build-and-push:
+    needs: tests
     name: Build and push
     runs-on: ubuntu-latest
     env:
