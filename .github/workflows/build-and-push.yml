@@ -1,10 +1,12 @@
 name: Build and push container images
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
   push:
     branches:
+      - main
       - deploy
       - test
   workflow_dispatch:
@@ -18,14 +20,13 @@ jobs:
         example: [express, flask]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js (Express)
         if: ${{ matrix.example == 'express' }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: "npm"
 
       - name: Install Express deps
         if: ${{ matrix.example == 'express' }}
@@ -48,19 +49,16 @@ jobs:
             express_example/coverage/lcov.info
             express_example/coverage/coverage-final.json
 
-
       - name: Set up Python (Flask)
         if: ${{ matrix.example == 'flask' }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: '3.10'
           cache: pip
 
-      - name: Install Flask deps
+      - name: Upgrade pip
         if: ${{ matrix.example == 'flask' }}
-        run: |
-          python -m pip install --upgrade pip
-        # separate step for requirements to allow setting working-directory
+        run: python -m pip install --upgrade pip
 
       - name: Install Flask requirements
         if: ${{ matrix.example == 'flask' }}
@@ -107,7 +105,7 @@ jobs:
             image: nginx-static
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
