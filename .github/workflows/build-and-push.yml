@@ -48,6 +48,7 @@ jobs:
           path: |
             express_example/coverage/lcov.info
             express_example/coverage/coverage-final.json
+            express_example/coverage/index.html
 
       - name: Set up Python (Flask)
         if: ${{ matrix.example == 'flask' }}
@@ -67,7 +68,8 @@ jobs:
 
       - name: Run Flask pytest with coverage
         if: ${{ matrix.example == 'flask' }}
-        run: pytest --maxfail=1 --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-report=json:coverage.json tests
+        run: |
+          pytest --maxfail=1 --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-report=json:coverage.json --cov-report=html:htmlcov --html=report.html --self-contained-html tests
         working-directory: flask_example
 
       - name: Upload Flask coverage artifacts

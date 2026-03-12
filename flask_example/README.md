@@ -88,4 +88,4 @@ Montar una pequeña aplicación Flask y desplegarla con Docker o Podman.
 ## Pruebas unitarias y cobertura
 
 - Con el entorno activo, instala las dependencias (`pip install -r requirements.txt`) y ejecuta `pytest flask_example/tests` desde la raíz del proyecto para comprobar que `/` responde correctamente.
-- Para obtener cobertura usa `pytest --cov=app --cov-report=term-missing flask_example/tests`; genera un reporte en la terminal y deja `coverage.xml`/`coverage.json` si deseas integrarla con otros pipelines.
+- Para obtener cobertura y reporte HTML usa `pytest --cov=app --cov-report=term-missing --cov-report=html:htmlcov --html=report.html --self-contained-html flask_example/tests`. El directorio `flask_example/htmlcov` y `flask_example/report.html` quedan listos para descarga.
