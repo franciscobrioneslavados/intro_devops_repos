@@ -67,4 +67,4 @@ Guía sencilla para crear una API mínima con Express y contenerizarla con Docke
 ## Pruebas unitarias y cobertura
 
 - Instala las dependencias (`npm install`) y ejecuta `npm test`. El script `test.js` invoca `app.handle` directamente para evitar abrir puertos en el sandbox y verifica el saludo de `/`.
-- Para ver cobertura, ejecuta `npm run coverage`; `nyc` instrumenta `index.js`, genera reportes `text`, `lcov` y `html` en `coverage/index.html`. Descarga ese HTML si quieres revisar la cobertura visualmente.
+- Para ver cobertura, ejecuta `npm run coverage`; `nyc` instrumenta `index.js` y genera los reportes `text`, `lcov` y `html` en `coverage/index.html`. Descarga ese HTML si quieres revisar la cobertura visualmente.

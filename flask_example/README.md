@@ -87,5 +87,12 @@ Montar una pequeña aplicación Flask y desplegarla con Docker o Podman.
 - Podrías usar `pip install gunicorn` y cambiar el CMD del contenedor para producción.
 ## Pruebas unitarias y cobertura
 
-- Con el entorno activo, instala las dependencias (`pip install -r requirements.txt`) y ejecuta `pytest flask_example/tests` desde la raíz del proyecto para comprobar que `/` responde correctamente.
-- Para obtener cobertura y reporte HTML usa `pytest --cov=app --cov-report=term-missing --cov-report=html:htmlcov --html=report.html --self-contained-html flask_example/tests`. El directorio `flask_example/htmlcov` y `flask_example/report.html` quedan listos para descarga.
+- Usa `make` para estandarizar los pasos:
+  ```bash
+  cd flask_example
+  make deps       # crea/actualiza el virtualenv e instala pip + requirements
+  make test       # corre pytest + cobertura y genera report.html
+  make coverage   # ejecuta coverage html para crear htmlcov/index.html
+  make clean      # elimina artefactos generados por las pruebas
+  ```
+- Si no tienes `make`, ejecuta manualmente los comandos descritos arriba: `python -m pytest ...` seguido de `coverage html -d htmlcov`. Los artefactos HTML (`htmlcov/index.html` y `report.html`) son los que se suben como artifacts en GitHub Actions.
