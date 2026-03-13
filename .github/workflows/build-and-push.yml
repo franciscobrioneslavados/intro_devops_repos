@@ -36,7 +36,7 @@ jobs:
       - name: Run Express tests and coverage
         if: ${{ matrix.example == 'express' }}
         run: |
-          npm run coverage
+          npm run test:cov
         working-directory: express_example
 
       - name: Upload Express coverage artifacts
