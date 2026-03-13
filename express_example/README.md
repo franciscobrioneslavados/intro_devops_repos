@@ -35,6 +35,21 @@ Guía sencilla para crear una API mínima con Express y contenerizarla con Docke
      "start": "node index.js"
    }
    ```
+5. Expón otras dos rutas REST para sumar y restar:
+   ```js
+   app.get('/sum', (req, res) => {
+     const a = Number(req.query.a) || 0;
+     const b = Number(req.query.b) || 0;
+     res.json({ result: a + b });
+   });
+
+   app.get('/subtract', (req, res) => {
+     const a = Number(req.query.a) || 0;
+     const b = Number(req.query.b) || 0;
+     res.json({ result: a - b });
+   });
+   ```
+   Puedes probarlos con `curl http://localhost:3000/sum?a=5&b=3` y `curl http://localhost:3000/subtract?a=10&b=6`.
 
 ## Docker / Podman
 
@@ -68,3 +83,4 @@ Guía sencilla para crear una API mínima con Express y contenerizarla con Docke
 
 - Instala las dependencias (`npm install`) y ejecuta `npm test`. El script `test.js` invoca `app.handle` directamente para evitar abrir puertos en el sandbox y verifica el saludo de `/`.
 - Para ver cobertura, ejecuta `npm run coverage`; `nyc` instrumenta `index.js` y genera los reportes `text`, `lcov` y `html` en `coverage/index.html`. Descarga ese HTML si quieres revisar la cobertura visualmente.
+- El manifiesto JSON de las pruebas se aloja en `express_example/coverage/coverage-final.json`; úsalo como fuente canónica para integrar métricas de cobertura en otras herramientas.

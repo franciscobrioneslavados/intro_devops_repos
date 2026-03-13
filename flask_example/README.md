@@ -31,11 +31,39 @@ Montar una pequeña aplicación Flask y desplegarla con Docker o Podman.
    PY
    ```
 
-3. Crea `requirements.txt` para fijar dependencias:
+3. Agrega dos endpoints REST simples:
+
+   ```python
+   from flask import Flask, jsonify, request
+
+   app = Flask(__name__)
+
+   def _parse_arg(name):
+       try:
+           return float(request.args.get(name, 0))
+       except (TypeError, ValueError):
+           return 0.0
+
+   @app.route('/sum')
+   def sum_values():
+       a = _parse_arg('a')
+       b = _parse_arg('b')
+       return jsonify(result=a + b)
+
+   @app.route('/subtract')
+   def subtract_values():
+       a = _parse_arg('a')
+       b = _parse_arg('b')
+       return jsonify(result=a - b)
+   ```
+
+   Puedes probarlos con `curl http://localhost:5000/sum?a=7&b=5` y `curl http://localhost:5000/subtract?a=10&b=4`.
+
+4. Crea `requirements.txt` para fijar dependencias:
    ```bash
    pip freeze > requirements.txt
    ```
-4. Prueba localmente:
+5. Prueba localmente:
    ```bash
    flask --app app run
    ```
@@ -80,19 +108,3 @@ Montar una pequeña aplicación Flask y desplegarla con Docker o Podman.
    ```bash
    podman rm flask-example
    ```
-
-## Notas
-
-- Si haces cambios en `app.py`, vuelve a crear la imagen para incluirlos.
-- Podrías usar `pip install gunicorn` y cambiar el CMD del contenedor para producción.
-## Pruebas unitarias y cobertura
-
-- Usa `make` para estandarizar los pasos:
-  ```bash
-  cd flask_example
-  make deps       # crea/actualiza el virtualenv e instala pip + requirements
-  make test       # corre pytest + cobertura y genera report.html
-  make coverage   # ejecuta coverage html para crear htmlcov/index.html
-  make clean      # elimina artefactos generados por las pruebas
-  ```
-- Si no tienes `make`, ejecuta manualmente los comandos descritos arriba: `python -m pytest ...` seguido de `coverage html -d htmlcov`. Los artefactos HTML (`htmlcov/index.html` y `report.html`) son los que se suben como artifacts en GitHub Actions.

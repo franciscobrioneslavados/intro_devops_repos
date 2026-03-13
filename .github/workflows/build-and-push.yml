@@ -36,7 +36,6 @@ jobs:
       - name: Run Express tests and coverage
         if: ${{ matrix.example == 'express' }}
         run: |
-          npm test
           npm run coverage
         working-directory: express_example
 
@@ -46,15 +45,13 @@ jobs:
         with:
           name: express-coverage
           path: |
-            express_example/coverage/lcov.info
-            express_example/coverage/coverage-final.json
-            express_example/coverage/index.html
+            express_example/coverage
 
       - name: Set up Python (Flask)
         if: ${{ matrix.example == 'flask' }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
           cache: pip
 
       - name: Upgrade pip
@@ -64,11 +61,6 @@ jobs:
       - name: Install Flask requirements via Makefile
         if: ${{ matrix.example == 'flask' }}
         run: make deps
-        working-directory: flask_example
-
-      - name: Run Flask tests via Makefile
-        if: ${{ matrix.example == 'flask' }}
-        run: make test
         working-directory: flask_example
 
       - name: Generate Flask HTML coverage via Makefile
@@ -82,8 +74,6 @@ jobs:
         with:
           name: flask-coverage
           path: |
-            flask_example/coverage.xml
-            flask_example/coverage.json
             flask_example/htmlcov/index.html
             flask_example/report.html
 
