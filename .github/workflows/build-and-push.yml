@@ -74,7 +74,8 @@ jobs:
         with:
           name: flask-coverage
           path: |
-            flask_example/htmlcov/index.html
+            flask_example/htmlcov
+            flask_example/report.html
 
   build-and-push:
     needs: tests
