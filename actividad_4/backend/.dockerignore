@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+dist
+.env
+.env.*
+*.log
+*.tmp
+.cache
+.git
+.gitignore
+README.md
+*.md

@@ -1,0 +1,12 @@
+aws_region           = "us-east-1"
+project_name         = "actividad-4"
+environment          = "dev"
+owner_name           = "Francisco Briones"
+
+vpc_id               = "vpc-xxxxxxxxxxxxxxxxx"
+public_subnet_ids    = ["subnet-xxxxxxxxxxxxxxxxx"]
+private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+route_table_ids      = ["rtb-xxxxxxxxxxxxxxxxx"]
+
+instance_type        = "t3.micro"
+ssh_allowed_cidrs    = []
