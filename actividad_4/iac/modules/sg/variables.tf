@@ -17,3 +17,9 @@ variable "vpc_id" {
   description = "VPC ID"
   type        = string
 }
+
+variable "alb_security_group_id" {
+  description = "Security group ID of the ALB/Traefik instance"
+  type        = string
+  default     = null
+}

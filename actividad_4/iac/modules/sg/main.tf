@@ -37,6 +37,16 @@ resource "aws_security_group_rule" "frontend_https" {
   security_group_id = aws_security_group.frontend.id
 }
 
+resource "aws_security_group_rule" "frontend_ssh" {
+  type              = "ingress"
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  description       = "SSH access"
+  security_group_id = aws_security_group.frontend.id
+}
+
 resource "aws_security_group_rule" "frontend_egress_to_backend" {
   type                     = "egress"
   from_port                = 3000
@@ -54,16 +64,6 @@ resource "aws_security_group_rule" "frontend_egress" {
   protocol          = "-1"
   cidr_blocks       = ["0.0.0.0/0"]
   description       = "Allow all outbound"
-  security_group_id = aws_security_group.frontend.id
-}
-
-resource "aws_security_group_rule" "frontend_ssh" {
-  type              = "ingress"
-  from_port         = 22
-  to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  description       = "SSH access"
   security_group_id = aws_security_group.frontend.id
 }
 
@@ -90,24 +90,37 @@ resource "aws_security_group_rule" "backend_ingress" {
   security_group_id        = aws_security_group.backend.id
 }
 
-resource "aws_security_group_rule" "backend_http" {
-  type              = "ingress"
-  from_port         = 80
-  to_port           = 80
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  description       = "HTTP for swagger"
-  security_group_id = aws_security_group.backend.id
+resource "aws_security_group_rule" "backend_http_from_alb" {
+  count                    = var.alb_security_group_id != null ? 1 : 0
+  type                     = "ingress"
+  from_port                = 80
+  to_port                  = 80
+  protocol                 = "tcp"
+  source_security_group_id = var.alb_security_group_id
+  description              = "HTTP from ALB"
+  security_group_id        = aws_security_group.backend.id
 }
 
-resource "aws_security_group_rule" "backend_https" {
-  type              = "ingress"
-  from_port         = 443
-  to_port           = 443
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  description       = "HTTPS for swagger"
-  security_group_id = aws_security_group.backend.id
+resource "aws_security_group_rule" "backend_https_from_alb" {
+  count                    = var.alb_security_group_id != null ? 1 : 0
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  source_security_group_id = var.alb_security_group_id
+  description              = "HTTPS from ALB"
+  security_group_id        = aws_security_group.backend.id
+}
+
+resource "aws_security_group_rule" "backend_3000_from_alb" {
+  count                    = var.alb_security_group_id != null ? 1 : 0
+  type                     = "ingress"
+  from_port                = 3000
+  to_port                  = 3000
+  protocol                 = "tcp"
+  source_security_group_id = var.alb_security_group_id
+  description              = "App port from ALB"
+  security_group_id        = aws_security_group.backend.id
 }
 
 resource "aws_security_group_rule" "backend_egress_to_database" {
@@ -120,16 +133,6 @@ resource "aws_security_group_rule" "backend_egress_to_database" {
   security_group_id        = aws_security_group.backend.id
 }
 
-resource "aws_security_group_rule" "backend_egress" {
-  type              = "egress"
-  from_port         = 0
-  to_port           = 0
-  protocol          = "-1"
-  cidr_blocks       = ["0.0.0.0/0"]
-  description       = "Allow all outbound"
-  security_group_id = aws_security_group.backend.id
-}
-
 resource "aws_security_group_rule" "backend_ssh" {
   type                     = "ingress"
   from_port                = 22
@@ -138,6 +141,26 @@ resource "aws_security_group_rule" "backend_ssh" {
   source_security_group_id = aws_security_group.frontend.id
   description              = "SSH from frontend"
   security_group_id        = aws_security_group.backend.id
+}
+
+resource "aws_security_group_rule" "backend_icmp" {
+  type                     = "ingress"
+  from_port                = 0
+  to_port                  = 0
+  protocol                 = "icmp"
+  source_security_group_id = aws_security_group.frontend.id
+  description              = "ICMP from frontend"
+  security_group_id        = aws_security_group.backend.id
+}
+
+resource "aws_security_group_rule" "backend_egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  description       = "Allow all outbound"
+  security_group_id = aws_security_group.backend.id
 }
 
 resource "aws_security_group" "database" {
@@ -163,6 +186,26 @@ resource "aws_security_group_rule" "database_ingress" {
   security_group_id        = aws_security_group.database.id
 }
 
+resource "aws_security_group_rule" "database_ssh" {
+  type                     = "ingress"
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.frontend.id
+  description              = "SSH from frontend"
+  security_group_id        = aws_security_group.database.id
+}
+
+resource "aws_security_group_rule" "database_icmp" {
+  type                     = "ingress"
+  from_port                = 0
+  to_port                  = 0
+  protocol                 = "icmp"
+  source_security_group_id = aws_security_group.frontend.id
+  description              = "ICMP from frontend"
+  security_group_id        = aws_security_group.database.id
+}
+
 resource "aws_security_group_rule" "database_egress" {
   type              = "egress"
   from_port         = 0
@@ -173,12 +216,4 @@ resource "aws_security_group_rule" "database_egress" {
   security_group_id = aws_security_group.database.id
 }
 
-resource "aws_security_group_rule" "database_ssh" {
-  type                     = "ingress"
-  from_port                = 22
-  to_port                  = 22
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.frontend.id
-  description              = "SSH from frontend"
-  security_group_id        = aws_security_group.database.id
-}
+

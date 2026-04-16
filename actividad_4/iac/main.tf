@@ -45,10 +45,11 @@ module "alb_instance" {
 module "app_security_groups" {
   source = "./modules/sg"
 
-  project_name = var.project_name
-  environment  = var.environment
-  owner_name   = var.owner_name
-  vpc_id       = var.vpc_id
+  project_name          = var.project_name
+  environment           = var.environment
+  owner_name            = var.owner_name
+  vpc_id                = var.vpc_id
+  alb_security_group_id = var.deploy_alb ? module.alb_instance[0].traefik_security_group_id : null
 }
 
 module "database_instance" {

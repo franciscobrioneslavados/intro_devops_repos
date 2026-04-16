@@ -1,0 +1,15 @@
+.terraform
+.terraform/*
+.terraform.lock.hcl
+terraform.tfstate.backup
+terraform.tfstate
+tfplan
+tfplan.binary
+*.pem
+*.zip
+*.tfstate.backup
+*.tfstate
+.terraform.tfstate.lock.info
+k3s.yaml
+.terraform/
+.terraform.lock.hcl
