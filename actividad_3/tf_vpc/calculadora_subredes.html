@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Calculadora Visual de Subredes AWS</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #f8f9fa; }
+        canvas { max-width: 500px; margin: 0 auto; }
+    </style>
+</head>
+<body>
+
+<div class="container my-5 p-5 bg-white rounded shadow-sm">
+    <h2 class="mb-3 text-dark">Simulador de Redes VPC</h2>
+    <p class="text-secondary mb-4 fs-5">
+        Diseñar una VPC implica dividir su bloque CIDR en subredes de igual tamaño. Ajusta los parámetros para simular tu diseño y asegurar que cumpla con los requisitos y mejores prácticas de AWS.
+    </p>
+    
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="p-3 bg-light border rounded h-100">
+                <label class="form-label fw-bold">Máscara VPC Base</label>
+                <input type="number" id="vpc-mask" class="form-control" min="16" max="28" value="20" oninput="updateChart()">
+                <div class="form-text">Rango permitido: /16 a /28.</div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="p-3 bg-light border rounded h-100">
+                <label class="form-label fw-bold">Zonas de Disp. (AZ)</label>
+                <input type="number" id="azs" class="form-control" min="1" max="6" value="2" oninput="updateChart()">
+                <div class="form-text">Nº de zonas a usar.</div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="p-3 bg-light border rounded h-100">
+                <label class="form-label fw-bold">Capas (Subnets x AZ)</label>
+                <input type="number" id="subnets-per-az" class="form-control" min="1" max="6" value="3" oninput="updateChart()">
+                <div class="form-text">Ej: Web, App, Database.</div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="p-3 bg-light border rounded h-100">
+                <label class="form-label fw-bold"><code>newbits</code></label>
+                <input type="number" id="newbits" class="form-control" min="1" max="14" value="4" oninput="updateChart()">
+                <div class="form-text">Bits adicionales a sumar.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-dark text-light p-3 rounded font-monospace text-center mb-4 fs-5">
+        cidrsubnet("VPC_BASE", <span id="formula-val" class="text-warning fw-bold">4</span>, count.index)
+    </div>
+
+    <div class="row text-center mb-4">
+        <div class="col-md-3">
+            <div class="card bg-light border-0 h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-2">Total de IPs</h6>
+                    <h3 class="card-text text-primary fw-bold" id="vpc-ips">4.096</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-light border-0 h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-2">Subnet Mask</h6>
+                    <h3 class="card-text text-primary fw-bold" id="mask">/24</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-light border-0 h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-2">IPs x Subnet</h6>
+                    <h3 class="card-text text-primary fw-bold" id="ips">256</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-light border-0 h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted mb-2">Subredes Creadas</h6>
+                    <h3 class="card-text text-primary fw-bold" id="subnets">16</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="status-box" class="alert d-none fs-5" role="alert"></div>
+
+    <div class="mt-4 pb-3">
+        <canvas id="myChart"></canvas>
+    </div>
+</div>
+
+<script>
+    let myChart;
+
+    function formatNumber(num) {
+        return new Intl.NumberFormat('es-CL').format(num);
+    }
+
+    function updateChart() {
+        let vpcMask = parseInt(document.getElementById('vpc-mask').value) || 20;
+        let azs = parseInt(document.getElementById('azs').value) || 2;
+        let newbits = parseInt(document.getElementById('newbits').value) || 4;
+        let subnetsPerAz = parseInt(document.getElementById('subnets-per-az').value) || 3;
+        
+        const vpcTotalIps = Math.pow(2, 32 - vpcMask);
+        const totalSubnets = Math.pow(2, newbits);
+        const mask = vpcMask + newbits;
+        const ipsPerSubnet = Math.pow(2, 32 - mask);
+        
+        const subnetsNeeded = azs * subnetsPerAz; 
+        const safeTotal = mask > 28 ? 0 : totalSubnets;
+        const freeSubnets = safeTotal > subnetsNeeded ? safeTotal - subnetsNeeded : 0;
+
+        document.getElementById('formula-val').innerText = newbits;
+        document.getElementById('vpc-ips').innerText = formatNumber(vpcTotalIps);
+        document.getElementById('mask').innerText = '/' + mask;
+        document.getElementById('ips').innerText = formatNumber(ipsPerSubnet);
+        document.getElementById('subnets').innerText = formatNumber(totalSubnets);
+
+        const statusBox = document.getElementById('status-box');
+        statusBox.classList.remove('d-none', 'alert-danger', 'alert-warning', 'alert-success');
+        
+        if (vpcMask > 28 || vpcMask < 16) {
+             statusBox.innerHTML = "<strong>Error AWS:</strong> Las políticas dictan que una VPC debe medir estrictamente entre /16 y /28. Ajusta la Máscara Base.";
+             statusBox.classList.add('alert-danger');
+        } else if (mask > 28) {
+             statusBox.innerHTML = `<strong>Error AWS:</strong> Amazon no permite subredes menores a /28 (16 IPs). Tu máscara actual es /${mask}. Disminuye los Newbits o amplía la VPC Base.`;
+             statusBox.classList.add('alert-danger');
+        } else if (totalSubnets < subnetsNeeded) {
+            statusBox.innerHTML = `<strong>Error Terraform:</strong> Estás generando ${totalSubnets} subredes, pero necesitas ${subnetsNeeded} (${azs} zonas multiplicadas por ${subnetsPerAz} capas). Aumenta los Newbits.`;
+            statusBox.classList.add('alert-danger');
+        } else if (freeSubnets === 0) {
+            statusBox.innerHTML = "<strong>Recomendación AWS:</strong> Has asignado el 100% del espacio de red. Las mejores prácticas de arquitectura sugieren fuertemente dejar subredes de reserva sin asignar para futuras expansiones (como una nueva Zona de Disponibilidad o una capa de servicios extra). Aumenta los Newbits para crear lotes de reserva.";
+            statusBox.classList.add('alert-warning');
+        } else {
+             statusBox.innerHTML = "<strong>Todo correcto:</strong> El diseño cumple con AWS, cubre lo que Terraform requiere y deja un margen de seguridad para crecer a futuro.";
+             statusBox.classList.add('alert-success');
+        }
+
+        const labels = [];
+        const chartData = [];
+        const baseColors = ['#0d6efd', '#198754', '#dc3545', '#fd7e14', '#6f42c1', '#20c997']; 
+        
+        let remainingSubnets = safeTotal;
+        let layersRendered = [];
+        let hasErrors = (totalSubnets < subnetsNeeded);
+        
+        for (let i = 0; i < subnetsPerAz; i++) {
+            let layerName = i === 0 ? "Capa Externa" : 
+                            i === 1 ? "Capa Interna 1" : 
+                            i === 2 ? "Capa Interna 2" : 
+                            `Capa Extra ${i+1}`;
+                            
+            let usedInThisLayer = Math.min(Math.max(0, remainingSubnets), azs);
+            
+            if (hasErrors && usedInThisLayer < azs) {
+                labels.push(`${layerName} (Faltantes)`);
+            } else {
+                labels.push(`${layerName} (${usedInThisLayer} subredes)`);
+            }
+
+            chartData.push(usedInThisLayer);
+            layersRendered.push(baseColors[i % baseColors.length]);
+            
+            remainingSubnets -= usedInThisLayer;
+        }
+        
+        if (freeSubnets > 0 || !hasErrors) {
+            labels.push(`Espacio de Reserva (${freeSubnets})`);
+            chartData.push(freeSubnets);
+            layersRendered.push('#e9ecef');
+        }
+
+        const data = {
+            labels: labels,
+            datasets: [{
+                data: chartData,
+                backgroundColor: layersRendered,
+                borderColor: '#ffffff',
+                borderWidth: 2,
+                hoverOffset: 12
+            }]
+        };
+
+        if (myChart) {
+            myChart.data = data;
+            myChart.update();
+        } else {
+            const ctx = document.getElementById('myChart').getContext('2d');
+            myChart = new Chart(ctx, {
+                type: 'pie',
+                data: data,
+                options: { 
+                    responsive: true,
+                    plugins: { 
+                        legend: { position: 'right' },
+                        tooltip: { backgroundColor: 'rgba(0,0,0,0.8)', padding: 10 }
+                    } 
+                }
+            });
+        }
+    }
+
+    updateChart();
+</script>
+<!-- Bootstrap 5 JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
