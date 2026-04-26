@@ -13,7 +13,6 @@ variable "project_name" {
 variable "owner_name" {
   description = "Owner name"
   type        = string
-  default     = "Francisco Briones"
 }
 
 variable "environment" {
@@ -31,11 +30,6 @@ variable "vpc_cidr" {
 variable "ssh_allowed_cidrs" {
   description = "List of CIDR blocks allowed to SSH into instances"
   type        = list(string)
-  default = [
-    "200.28.85.233/32",  # Melipilla
-    "152.230.70.114/32", # DUOC
-    "201.223.101.14/32"  # Santo Domingo
-  ]
 }
 
 variable "instance_type" {

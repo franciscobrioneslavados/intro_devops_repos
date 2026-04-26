@@ -6,3 +6,5 @@
 tfplan
 *.tfstate
 *.tfstate.backup
+.DS_Store
+terraform.tfvars
