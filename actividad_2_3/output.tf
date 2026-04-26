@@ -1,12 +1,24 @@
-output "compose_host_public_ip" {
-  value = module.compose_host.public_ips[0]
+output "frontend_instances_info" {
+  value = {
+    instance_id = module.frontend_host.instance_id[0]
+    public_ip   = module.frontend_host.public_ips[0]
+    curl_test   = "curl -I http://${module.frontend_host.public_ips[0]}/"
+    ssm_connect = "aws ssm start-session --target ${module.frontend_host.instance_id[0]}"
+  }
 }
 
-output "ssh_command_compose" {
-  value = "ssh -i ${var.project_name}-${var.environment}-key.pem ubuntu@${module.compose_host.public_ips[0]}"
+output "backend_instances_info" {
+  value = {
+    instance_id = module.backend_host.instance_id[0]
+    private_ip  = module.backend_host.private_ips[0]
+    ssm_connect = "aws ssm start-session --target ${module.backend_host.instance_id[0]}"
+  }
 }
 
-output "test_compose_host" {
-  value = "curl -i http://${module.compose_host.public_ips[0]}:8080/"
+output "db_instances_info" {
+  value = {
+    instance_id = module.db_host.instance_id[0]
+    private_ip  = module.db_host.private_ips[0]
+    ssm_connect = "aws ssm start-session --target ${module.db_host.instance_id[0]}"
+  }
 }
-

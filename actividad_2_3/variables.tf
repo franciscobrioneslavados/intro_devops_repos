@@ -13,7 +13,6 @@ variable "project_name" {
 variable "owner_name" {
   description = "Owner name"
   type        = string
-  default     = "Francisco Briones"
 }
 
 variable "environment" {
@@ -25,18 +24,17 @@ variable "environment" {
 variable "vpc_cidr" {
   description = "CIDR block for VPC"
   type        = string
-  default     = "10.20.0.0/22"
+  # default     = "10.10.0.0/24" # Cantidad de ips disponibles: 256 (251 utilizables), Divido en 4 subredes de 64 ips cada una
+  # default = "10.10.0.0/25" # Cantidad de ips disponibles: 128 (123 utilizables), Divido en 4 subredes de 32 ips cada una
+  default = "10.10.0.0/26" # Cantidad de ips disponibles: 64 (59 utilizables), Divido en 4 subredes de 16 ips cada una
+  # default = "10.10.0.0/27" # Cantidad de ips disponibles: 32 (27 utilizables), Divido en 4 subredes de 8 ips cada una
+  # default = "10.10.0.0/28" # Cantidad de ips disponibles: 16 (11 utilizables), Divido en 4 subredes de 4 ips cada una
+
 }
 
 variable "ssh_allowed_cidrs" {
   description = "List of CIDR blocks allowed to SSH into instances"
   type        = list(string)
-  default = [
-    "200.28.85.233/32",  # Melipilla
-    "152.230.70.114/32", # DUOC
-    "152.230.70.114/32",
-    "201.223.101.14/32" # Santo Domingo
-  ]
 }
 
 variable "instance_type" {

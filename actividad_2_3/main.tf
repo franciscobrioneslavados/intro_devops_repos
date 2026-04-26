@@ -1,7 +1,8 @@
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
-  vpc_cidr    = "10.10.0.0/22"
-  azs         = ["us-east-1a", "us-east-1b"]
+  # Limpiamos el CIDR local para usar la variable
+  vpc_cidr = var.vpc_cidr
+  azs      = ["us-east-1a", "us-east-1b"]
 }
 resource "tls_private_key" "rsa_key" {
   algorithm = "RSA"
@@ -94,21 +95,16 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-module "lab_sg" {
+# --- Security Groups por Tier ---
+
+module "frontend_sg" {
   source = "./modules/security_group"
 
-  name        = "${local.name_prefix}-lab-sg"
-  description = "Security group for Docker/Podman labs"
+  name        = "${local.name_prefix}-frontend-sg"
+  description = "Security group for Frontend (Public)"
   vpc_id      = module.vpc.vpc_id
 
   ingress_rules = [
-    {
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      cidr_blocks = var.ssh_allowed_cidrs
-      description = "SSH access"
-    },
     {
       from_port   = -1
       to_port     = -1
@@ -121,59 +117,116 @@ module "lab_sg" {
       to_port     = 80
       protocol    = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
-      description = "HTTP access"
-    },
-    {
-      from_port   = 8080
-      to_port     = 8080
-      protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"]
-      description = "Web apps port"
-    },
+      description = "HTTP access from world"
+    }
   ]
-
-  tags = {
-    Name = "${local.name_prefix}-lab-sg"
-  }
 }
 
-module "compose_host" {
+module "backend_sg" {
+  source = "./modules/security_group"
+
+  name        = "${local.name_prefix}-backend-sg"
+  description = "Security group for Backend (Private)"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress_rules = [
+    {
+      from_port          = -1
+      to_port            = -1
+      protocol           = "icmp"
+      security_group_ids = [module.frontend_sg.security_group_id]
+      description        = "ICMP access"
+    },
+    {
+      from_port          = 3001
+      to_port            = 3001
+      protocol           = "tcp"
+      security_group_ids = [module.frontend_sg.security_group_id]
+      description        = "Backend access from Frontend SG"
+    }
+  ]
+}
+
+module "db_sg" {
+  source = "./modules/security_group"
+
+  name        = "${local.name_prefix}-db-sg"
+  description = "Security group for Database (Private)"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress_rules = [
+    {
+      from_port          = -1
+      to_port            = -1
+      protocol           = "icmp"
+      security_group_ids = [module.backend_sg.security_group_id]
+      description        = "ICMP access"
+    },
+    {
+      from_port          = 3306
+      to_port            = 3306
+      protocol           = "tcp"
+      security_group_ids = [module.backend_sg.security_group_id]
+      description        = "MySQL access from Backend SG"
+    }
+  ]
+}
+
+# --- Instancias de la Aplicación ---
+
+module "db_host" {
   source = "./modules/ec2"
 
-  name                 = "${local.name_prefix}-compose-instance"
+  name                 = "${local.name_prefix}-db"
   ami_id               = data.aws_ami.ubuntu.id
   instance_type        = var.instance_type
-  subnet_id            = module.vpc.public_subnets[0]
-  security_group_ids   = [module.lab_sg.security_group_id]
+  subnet_id            = module.vpc.private_subnets[0]
+  security_group_ids   = [module.db_sg.security_group_id]
   key_name             = aws_key_pair.poc2_key.key_name
   iam_instance_profile = var.iam_instance_profile
 
-  user_data = <<-EOF
-              #!/bin/bash
-              # 1. Extract application if present
-              APP_ZIP_B64="${filebase64(data.archive_file.app_single.output_path)}"
-              if [ -n "$APP_ZIP_B64" ]; then
-                apt-get update
-                apt-get install -y unzip
-                mkdir -p /home/ubuntu/app
-                echo "$APP_ZIP_B64" | base64 -d > /home/ubuntu/app.zip
-                unzip /home/ubuntu/app.zip -d /home/ubuntu/app
-                chown -R ubuntu:ubuntu /home/ubuntu/app
-              fi
+  user_data = templatefile("${path.module}/templates/database.tpl", {
+    app_zip_b64 = filebase64(data.archive_file.app_single.output_path)
+  })
 
-              # 2. Run custom user data script
-              apt-get install -y docker.io docker-compose apache2-utils
-              systemctl start docker
-              systemctl enable docker
-              usermod -aG docker ubuntu
+  tags = { Layer = "database" }
+}
 
-              # Corremos la app con compose
-              cd /home/ubuntu/app
-              docker-compose up -d
-              EOF
+module "backend_host" {
+  source = "./modules/ec2"
 
-  tags = {
-    Name = "${local.name_prefix}-compose-instance"
-  }
+  name                 = "${local.name_prefix}-backend"
+  ami_id               = data.aws_ami.ubuntu.id
+  instance_type        = var.instance_type
+  subnet_id            = module.vpc.private_subnets[1]
+  security_group_ids   = [module.backend_sg.security_group_id]
+  key_name             = aws_key_pair.poc2_key.key_name
+  iam_instance_profile = var.iam_instance_profile
+
+  user_data = templatefile("${path.module}/templates/backend.tpl", {
+    app_zip_b64 = filebase64(data.archive_file.app_single.output_path),
+    db_host     = module.db_host.private_ips[0]
+  })
+
+  tags = { Layer = "backend" }
+}
+
+module "frontend_host" {
+  source = "./modules/ec2"
+
+  name                 = "${local.name_prefix}-frontend"
+  ami_id               = data.aws_ami.ubuntu.id
+  instance_type        = var.instance_type
+  subnet_id            = module.vpc.public_subnets[0]
+  security_group_ids   = [module.frontend_sg.security_group_id]
+  key_name             = aws_key_pair.poc2_key.key_name
+  iam_instance_profile = var.iam_instance_profile
+
+  user_data = templatefile("${path.module}/templates/frontend.tpl", {
+    app_zip_b64  = filebase64(data.archive_file.app_single.output_path),
+    backend_host = module.backend_host.private_ips[0]
+  })
+
+  tags = { Layer = "frontend" }
 }
 

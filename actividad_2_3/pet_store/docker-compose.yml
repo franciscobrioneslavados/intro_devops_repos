@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  db:
+    build:
+      context: ./db
+    environment:
+      MYSQL_ROOT_PASSWORD: admin123
+      MYSQL_DATABASE: tienda_perritos
+    ports:
+      - "3306:3306"
+    networks:
+      - app-network
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: admin123
+      DB_NAME: tienda_perritos
+      DB_PORT: 3306
+    ports:
+      - "3001:3001"
+    networks:
+      - app-network
+    depends_on:
+      - db
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "80:80"
+    networks:
+      - app-network
+    depends_on:
+      - backend
+    restart: always
+
+networks:
+  app-network:
+    driver: bridge

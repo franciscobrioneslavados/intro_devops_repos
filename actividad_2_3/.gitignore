@@ -1,0 +1,7 @@
+.terraform
+.terraform/*
+.terraform.*
+*.pem
+*.zip
+tfplan
+*.tfstate
