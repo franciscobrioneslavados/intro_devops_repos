@@ -4,21 +4,6 @@ locals {
   vpc_cidr = var.vpc_cidr
   azs      = ["us-east-1a", "us-east-1b"]
 }
-resource "tls_private_key" "rsa_key" {
-  algorithm = "RSA"
-  rsa_bits  = 4096
-}
-
-resource "aws_key_pair" "poc2_key" {
-  key_name   = "${local.name_prefix}-key"
-  public_key = tls_private_key.rsa_key.public_key_openssh
-}
-
-resource "local_file" "private_key" {
-  content         = tls_private_key.rsa_key.private_key_pem
-  filename        = "${path.module}/${local.name_prefix}-key.pem"
-  file_permission = "0400"
-}
 
 data "archive_file" "app_single" {
   type        = "zip"
@@ -74,7 +59,6 @@ module "nat_instance" {
   owner_name           = var.owner_name
   instance_type        = var.instance_type
   ssh_allowed_cidrs    = var.ssh_allowed_cidrs
-  key_name             = aws_key_pair.poc2_key.key_name
   os_type              = "amazon-linux-2" # or "ubuntu"
 
   depends_on = [module.vpc]
@@ -182,7 +166,6 @@ module "db_host" {
   instance_type        = var.instance_type
   subnet_id            = module.vpc.private_subnets[0]
   security_group_ids   = [module.db_sg.security_group_id]
-  key_name             = aws_key_pair.poc2_key.key_name
   iam_instance_profile = var.iam_instance_profile
 
   user_data = templatefile("${path.module}/templates/database.tpl", {
@@ -200,7 +183,6 @@ module "backend_host" {
   instance_type        = var.instance_type
   subnet_id            = module.vpc.private_subnets[1]
   security_group_ids   = [module.backend_sg.security_group_id]
-  key_name             = aws_key_pair.poc2_key.key_name
   iam_instance_profile = var.iam_instance_profile
 
   user_data = templatefile("${path.module}/templates/backend.tpl", {
@@ -208,7 +190,8 @@ module "backend_host" {
     db_host     = module.db_host.private_ips[0]
   })
 
-  tags = { Layer = "backend" }
+  tags       = { Layer = "backend" }
+  depends_on = [module.db_host]
 }
 
 module "frontend_host" {
@@ -219,7 +202,6 @@ module "frontend_host" {
   instance_type        = var.instance_type
   subnet_id            = module.vpc.public_subnets[0]
   security_group_ids   = [module.frontend_sg.security_group_id]
-  key_name             = aws_key_pair.poc2_key.key_name
   iam_instance_profile = var.iam_instance_profile
 
   user_data = templatefile("${path.module}/templates/frontend.tpl", {
@@ -227,6 +209,7 @@ module "frontend_host" {
     backend_host = module.backend_host.private_ips[0]
   })
 
-  tags = { Layer = "frontend" }
+  tags       = { Layer = "frontend" }
+  depends_on = [module.backend_host]
 }
 

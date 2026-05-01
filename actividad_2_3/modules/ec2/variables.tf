@@ -30,11 +30,6 @@ variable "security_group_ids" {
   type        = list(string)
 }
 
-variable "key_name" {
-  description = "SSH Key pair name"
-  type        = string
-}
-
 variable "iam_instance_profile" {
   description = "IAM Instance Profile name"
   type        = string

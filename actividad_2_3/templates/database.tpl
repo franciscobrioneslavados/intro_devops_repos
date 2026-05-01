@@ -11,8 +11,8 @@ unzip /home/ubuntu/app.zip -d /home/ubuntu/app
 chown -R ubuntu:ubuntu /home/ubuntu/app
 
 # Dar permisos a docker a los usuarios ubuntu y ssm-user
-usermod -a -G docker ubuntu
-usermod -a -G docker ssm-user
+usermod -aG docker ubuntu
+usermod -aG docker ssm-user
 
 # 2. Run DB
 cd /home/ubuntu/app/db

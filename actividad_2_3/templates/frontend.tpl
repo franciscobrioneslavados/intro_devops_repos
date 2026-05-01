@@ -10,9 +10,9 @@ echo "$APP_ZIP_B64" | base64 -d > /home/ubuntu/app.zip
 unzip /home/ubuntu/app.zip -d /home/ubuntu/app
 chown -R ubuntu:ubuntu /home/ubuntu/app
 
-# Dar permisos a docker a los usuarios ubuntu y ssm-user
-usermod -a -G docker ubuntu
-usermod -a -G docker ssm-user
+#Dar permisos a docker a los usuarios ubuntu y ssm-user
+usermod -aG docker ubuntu
+usermod -aG docker ssm-user
 
 # 2. Configure Nginx proxy to Backend
 # Modificamos la configuración de Nginx para apuntar al IP del backend
