@@ -7,7 +7,6 @@ variable "aws_region" {
 variable "project_name" {
   description = "Project name"
   type        = string
-  default     = "actividad6"
 }
 
 variable "owner_name" {
@@ -18,7 +17,6 @@ variable "owner_name" {
 variable "environment" {
   description = "Environment name"
   type        = string
-  default     = "dev"
 }
 
 variable "vpc_cidr" {
@@ -52,13 +50,16 @@ variable "iam_instance_profile" {
 
 
 variable "container_registry" {
-  description = "Type of container registry to use (ecr or github)"
+  description = "Type of container registry to use (ecr, github, or dockerhub)"
   type        = string
-  default     = "ecr"
 }
 
 variable "github_username" {
   description = "GitHub username for GHCR"
   type        = string
-  default     = "franciscobrioneslavados"
+}
+
+variable "dockerhub_username" {
+  description = "Docker Hub username"
+  type        = string
 }
