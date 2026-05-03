@@ -86,3 +86,28 @@ jobs:
             docker push $GH_IMAGE_NAME:latest
           fi
         done
+
+    - name: Generate Deployment Summary
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        GHCR_REGISTRY: ghcr.io/${{ github.repository_owner }}
+        NAME_PREFIX: ${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT }}
+        REGISTRY_CHOICE: ${{ github.event.inputs.registry || env.CONTAINER_REGISTRY }}
+      run: |
+        echo "### 🚀 Resumen de Imágenes Desplegadas" >> $GITHUB_STEP_SUMMARY
+        echo "| Componente | Registro | URL de la Imagen |" >> $GITHUB_STEP_SUMMARY
+        echo "|------------|----------|-----------------|" >> $GITHUB_STEP_SUMMARY
+        
+        TIERS=("frontend" "backend" "db")
+        for TIER in "${TIERS[@]}"; do
+          IMAGE_NAME="${NAME_PREFIX}-${TIER}"
+          
+          if [[ ("$REGISTRY_CHOICE" == "ecr" || "$REGISTRY_CHOICE" == "all") && -n "$ECR_REGISTRY" ]]; then
+            echo "| $TIER | ECR | \`$ECR_REGISTRY/$IMAGE_NAME:latest\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "$REGISTRY_CHOICE" == "github" || "$REGISTRY_CHOICE" == "all" ]]; then
+            GH_IMAGE_NAME=$(echo "$GHCR_REGISTRY/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
+            echo "| $TIER | GHCR | \`$GH_IMAGE_NAME:latest\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
