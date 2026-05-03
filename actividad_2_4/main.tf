@@ -5,8 +5,8 @@ locals {
   azs      = ["us-east-1a", "us-east-1b"]
 
   images = {
-    for k, v in aws_ecr_repository.app : k => try(
-      var.container_registry == "ecr" ? "${v.repository_url}:latest" : (
+    for k in ["frontend", "backend", "db"] : k => try(
+      var.container_registry == "ecr" ? "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${local.name_prefix}-${k}:latest" : (
         var.container_registry == "github" ? "ghcr.io/${var.github_username}/${local.name_prefix}-${k}:latest" : "${var.dockerhub_username}/${local.name_prefix}-${k}:latest"
       ),
       ""
@@ -14,16 +14,19 @@ locals {
   }
 }
 
-resource "aws_ecr_repository" "app" {
-  for_each             = toset(["frontend", "backend", "db"])
-  name                 = "${local.name_prefix}-${each.key}"
-  image_tag_mutability = "MUTABLE"
-  force_delete         = true
+data "aws_caller_identity" "current" {}
 
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-}
+# ECR repositories are now managed by the CI/CD setup job to avoid circular dependencies
+# resource "aws_ecr_repository" "app" {
+#   for_each             = toset(["frontend", "backend", "db"])
+#   name                 = "${local.name_prefix}-${each.key}"
+#   image_tag_mutability = "MUTABLE"
+#   force_delete         = true
+#
+#   image_scanning_configuration {
+#     scan_on_push = true
+#   }
+# }
 
 data "archive_file" "app_single" {
   type        = "zip"
