@@ -1,4 +1,4 @@
-name: Build and Push Images
+name: Build, Push and Deploy
 
 on:
   push:
@@ -20,7 +20,7 @@ env:
   AWS_REGION: us-east-1
   PROJECT_NAME: actividad6
   ENVIRONMENT: dev
-  CONTAINER_REGISTRY: all # Opciones: 'ecr', 'github', 'dockerhub', 'all'
+  CONTAINER_REGISTRY: all
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
@@ -82,9 +82,6 @@ jobs:
               echo "Pushing to ECR..."
               docker tag $IMAGE_NAME:latest $ECR_REGISTRY/$IMAGE_NAME:latest
               docker push $ECR_REGISTRY/$IMAGE_NAME:latest
-            elif [[ "$REGISTRY_CHOICE" == "ecr" && -z "$ECR_REGISTRY" ]]; then
-              echo "::error::Se seleccionó ECR pero no hay credenciales de AWS configuradas."
-              exit 1
             fi
             
             # Push to GHCR
@@ -98,12 +95,9 @@ jobs:
             # Push to Docker Hub
             if [[ ("$REGISTRY_CHOICE" == "dockerhub" || "$REGISTRY_CHOICE" == "all") && -n "$DOCKERHUB_USERNAME" ]]; then
               echo "Pushing to Docker Hub..."
-              DH_IMAGE_NAME="$DOCKERHUB_USERNAME/$IMAGE_NAME"
+              DH_IMAGE_NAME=$(echo "$DOCKERHUB_USERNAME/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
               docker tag $IMAGE_NAME:latest $DH_IMAGE_NAME:latest
               docker push $DH_IMAGE_NAME:latest
-            elif [[ "$REGISTRY_CHOICE" == "dockerhub" && -z "$DOCKERHUB_USERNAME" ]]; then
-              echo "::error::Se seleccionó Docker Hub pero no hay credenciales (DOCKERHUB_USERNAME) configuradas."
-              exit 1
             fi
           done
 
@@ -132,6 +126,46 @@ jobs:
             fi
 
             if [[ ("$REGISTRY_CHOICE" == "dockerhub" || "$REGISTRY_CHOICE" == "all") && -n "$DOCKERHUB_USERNAME" ]]; then
-              echo "| $TIER | DockerHub | \`$DOCKERHUB_USERNAME/$IMAGE_NAME:latest\` |" >> $GITHUB_STEP_SUMMARY
+              DH_IMAGE_NAME=$(echo "$DOCKERHUB_USERNAME/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
+              echo "| $TIER | DockerHub | \`$DH_IMAGE_NAME:latest\` |" >> $GITHUB_STEP_SUMMARY
             fi
           done
+
+  terraform-deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    env:
+      TF_VAR_project_name: ${{ env.PROJECT_NAME }}
+      TF_VAR_environment: ${{ env.ENVIRONMENT }}
+      TF_VAR_owner_name: ${{ secrets.OWNER_NAME }}
+      TF_VAR_container_registry: ${{ github.event.inputs.registry || env.CONTAINER_REGISTRY }}
+      TF_VAR_github_username: ${{ github.repository_owner }}
+      TF_VAR_dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+      TF_VAR_ssh_allowed_cidrs: '["0.0.0.0/0"]' # Ajustar segun necesidad o usar secreto
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ./actividad_2_4
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: ./actividad_2_4
+        run: terraform plan -no-color
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/actividad_2_4'
+        working-directory: ./actividad_2_4
+        run: terraform apply -auto-approve

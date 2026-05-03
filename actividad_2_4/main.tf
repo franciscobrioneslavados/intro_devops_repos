@@ -5,7 +5,12 @@ locals {
   azs      = ["us-east-1a", "us-east-1b"]
 
   images = {
-    for k, v in aws_ecr_repository.app : k => var.container_registry == "ecr" ? "${v.repository_url}:latest" : "ghcr.io/${var.github_username}/${local.name_prefix}-${k}:latest"
+    for k, v in aws_ecr_repository.app : k => try(
+      var.container_registry == "ecr" ? "${v.repository_url}:latest" : (
+        var.container_registry == "github" ? "ghcr.io/${var.github_username}/${local.name_prefix}-${k}:latest" : "${var.dockerhub_username}/${local.name_prefix}-${k}:latest"
+      ),
+      ""
+    )
   }
 }
 
@@ -184,7 +189,7 @@ module "db_host" {
   iam_instance_profile = var.iam_instance_profile
 
   user_data = templatefile("${path.module}/templates/database.tpl", {
-    image_url          = local.images["db"]
+    image_url          = try(local.images["db"], "")
     container_registry = var.container_registry
   })
 
@@ -202,7 +207,7 @@ module "backend_host" {
   iam_instance_profile = var.iam_instance_profile
 
   user_data = templatefile("${path.module}/templates/backend.tpl", {
-    image_url          = local.images["backend"]
+    image_url          = try(local.images["backend"], "")
     container_registry = var.container_registry
     db_host            = module.db_host.private_ips[0]
   })
@@ -222,7 +227,7 @@ module "frontend_host" {
   iam_instance_profile = var.iam_instance_profile
 
   user_data = templatefile("${path.module}/templates/frontend.tpl", {
-    image_url          = local.images["frontend"]
+    image_url          = try(local.images["frontend"], "")
     container_registry = var.container_registry
     backend_host       = module.backend_host.private_ips[0]
   })

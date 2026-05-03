@@ -14,7 +14,7 @@ terraform {
 
 provider "aws" {
   region  = var.aws_region
-  profile = "duoc"
+#  profile = "duoc"
 
   default_tags {
     tags = {
