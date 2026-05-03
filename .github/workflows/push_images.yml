@@ -2,7 +2,8 @@ name: Build, Push and Deploy
 
 on:
   push:
-    branches: ["actividad_2_4"]
+    branches:
+      - actividad_2_4
   workflow_dispatch:
     inputs:
       registry:
@@ -39,7 +40,7 @@ jobs:
       - name: Set Registry Choice
         id: set-registry
         run: |
-          CHOICE="${{ github.event.inputs.registry }}"
+          CHOICE="${{ inputs.registry }}"
           if [ -z "$CHOICE" ]; then
             CHOICE="${{ env.CONTAINER_REGISTRY }}"
           fi
@@ -83,28 +84,20 @@ jobs:
           for TIER in "${TIERS[@]}"; do
             echo "Processing $TIER..."
             IMAGE_NAME="${NAME_PREFIX}-${TIER}"
-            
-            # Build
             docker build -t $IMAGE_NAME ./actividad_2_4/pet_store/$TIER
             
-            # Push to ECR
             if [[ ("$REGISTRY_CHOICE" == "ecr" || "$REGISTRY_CHOICE" == "all") && -n "$ECR_REGISTRY" ]]; then
-              echo "Pushing to ECR..."
               docker tag $IMAGE_NAME:latest $ECR_REGISTRY/$IMAGE_NAME:latest
               docker push $ECR_REGISTRY/$IMAGE_NAME:latest
             fi
             
-            # Push to GHCR
             if [[ "$REGISTRY_CHOICE" == "github" || "$REGISTRY_CHOICE" == "all" ]]; then
-              echo "Pushing to GHCR..."
               GH_IMAGE_NAME=$(echo "$GHCR_REGISTRY/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
               docker tag $IMAGE_NAME:latest $GH_IMAGE_NAME:latest
               docker push $GH_IMAGE_NAME:latest
             fi
 
-            # Push to Docker Hub
             if [[ ("$REGISTRY_CHOICE" == "dockerhub" || "$REGISTRY_CHOICE" == "all") && -n "$DOCKERHUB_USERNAME" ]]; then
-              echo "Pushing to Docker Hub..."
               DH_IMAGE_NAME=$(echo "$DOCKERHUB_USERNAME/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
               docker tag $IMAGE_NAME:latest $DH_IMAGE_NAME:latest
               docker push $DH_IMAGE_NAME:latest
@@ -121,20 +114,16 @@ jobs:
           echo "### Resumen de Imágenes Desplegadas" >> $GITHUB_STEP_SUMMARY
           echo "| Componente | Registro | URL de la Imagen |" >> $GITHUB_STEP_SUMMARY
           echo "|------------|----------|-----------------|" >> $GITHUB_STEP_SUMMARY
-
           TIERS=("frontend" "backend" "db")
           for TIER in "${TIERS[@]}"; do
             IMAGE_NAME="${NAME_PREFIX}-${TIER}"
-            
             if [[ ("$REGISTRY_CHOICE" == "ecr" || "$REGISTRY_CHOICE" == "all") && -n "$ECR_REGISTRY" ]]; then
               echo "| $TIER | ECR | \`$ECR_REGISTRY/$IMAGE_NAME:latest\` |" >> $GITHUB_STEP_SUMMARY
             fi
-            
             if [[ "$REGISTRY_CHOICE" == "github" || "$REGISTRY_CHOICE" == "all" ]]; then
               GH_IMAGE_NAME=$(echo "$GHCR_REGISTRY/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
               echo "| $TIER | GHCR | \`$GH_IMAGE_NAME:latest\` |" >> $GITHUB_STEP_SUMMARY
             fi
-
             if [[ ("$REGISTRY_CHOICE" == "dockerhub" || "$REGISTRY_CHOICE" == "all") && -n "$DOCKERHUB_USERNAME" ]]; then
               DH_IMAGE_NAME=$(echo "$DOCKERHUB_USERNAME/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
               echo "| $TIER | DockerHub | \`$DH_IMAGE_NAME:latest\` |" >> $GITHUB_STEP_SUMMARY
@@ -155,25 +144,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-
       - name: Terraform Init
         working-directory: ./actividad_2_4
         run: terraform init
-
       - name: Terraform Plan
         working-directory: ./actividad_2_4
         run: terraform plan -no-color
-
       - name: Terraform Apply
         if: github.ref == 'refs/heads/actividad_2_4'
         working-directory: ./actividad_2_4
