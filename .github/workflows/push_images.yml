@@ -6,16 +6,6 @@ on:
       - actividad_2_4
   workflow_dispatch:
     inputs:
-      registry:
-        description: "Registry"
-        required: true
-        default: "all"
-        type: choice
-        options:
-          - ecr
-          - github
-          - dockerhub
-          - all
       action:
         description: "Action"
         required: true
@@ -26,131 +16,25 @@ on:
           - destroy
 
 jobs:
-  setup-ecr:
+  deploy:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action != 'destroy')
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
-      - name: Create ECR Repositories
-        run: |
-          TIERS=("frontend" "backend" "db")
-          for TIER in "${TIERS[@]}"; do
-            REPO_NAME="intro_devops-dev-${TIER}"
-            if ! aws ecr describe-repositories --repository-names "$REPO_NAME" > /dev/null 2>&1; then
-              aws ecr create-repository --repository-name "$REPO_NAME"
-            fi
-          done
-
-  build-and-push:
-    runs-on: ubuntu-latest
-    needs: setup-ecr
-    if: always() && (needs.setup-ecr.result == 'success' || needs.setup-ecr.result == 'skipped')
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      registry_choice: ${{ steps.set-registry.outputs.choice }}
-    env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set Registry Choice
-        id: set-registry
-        run: |
-          CHOICE="${{ github.event.inputs.registry }}"
-          if [ -z "$CHOICE" ]; then CHOICE="all"; fi
-          echo "choice=$CHOICE" >> $GITHUB_OUTPUT
-      - name: Configure AWS credentials
-        if: secrets.AWS_ACCESS_KEY_ID != ''
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
-      - name: Login to Amazon ECR
-        if: secrets.AWS_ACCESS_KEY_ID != ''
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Login to Docker Hub
-        if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and Push
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          GHCR_REGISTRY: ghcr.io/${{ github.repository_owner }}
-          REGISTRY_CHOICE: ${{ steps.set-registry.outputs.choice }}
-        run: |
-          NAME_PREFIX="intro_devops-dev"
-          TIERS=("frontend" "backend" "db")
-          for TIER in "${TIERS[@]}"; do
-            IMAGE_NAME="${NAME_PREFIX}-${TIER}"
-            docker build -t $IMAGE_NAME ./actividad_2_4/pet_store/$TIER
-            if [[ ("$REGISTRY_CHOICE" == "ecr" || "$REGISTRY_CHOICE" == "all") && -n "$ECR_REGISTRY" ]]; then
-              docker tag $IMAGE_NAME:latest $ECR_REGISTRY/$IMAGE_NAME:latest
-              docker push $ECR_REGISTRY/$IMAGE_NAME:latest
-            fi
-            if [[ "$REGISTRY_CHOICE" == "github" || "$REGISTRY_CHOICE" == "all" ]]; then
-              GH_IMAGE_NAME=$(echo "$GHCR_REGISTRY/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
-              docker tag $IMAGE_NAME:latest $GH_IMAGE_NAME:latest
-              docker push $GH_IMAGE_NAME:latest
-            fi
-            if [[ ("$REGISTRY_CHOICE" == "dockerhub" || "$REGISTRY_CHOICE" == "all") && -n "$DOCKERHUB_USERNAME" ]]; then
-              DH_IMAGE_NAME=$(echo "$DOCKERHUB_USERNAME/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
-              docker tag $IMAGE_NAME:latest $DH_IMAGE_NAME:latest
-              docker push $DH_IMAGE_NAME:latest
-            fi
-          done
-
-  terraform:
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    if: always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
     environment: production
-    env:
-      TF_VAR_project_name: intro_devops
-      TF_VAR_environment: dev
-      TF_VAR_owner_name: ${{ secrets.OWNER_NAME }}
-      TF_VAR_container_registry: ${{ needs.build-and-push.outputs.registry_choice || 'all' }}
-      TF_VAR_github_username: ${{ github.repository_owner }}
-      TF_VAR_dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
-      TF_VAR_ssh_allowed_cidrs: '["0.0.0.0/0"]'
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-      - name: Configure AWS credentials
+      - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-      - name: Terraform Action
-        working-directory: ./actividad_2_4
+      - name: Terraform
         run: |
+          cd actividad_2_4
           terraform init
-          if [ "${{ github.event.inputs.action }}" == "destroy" ]; then
+          if [ "${{ inputs.action }}" == "destroy" ]; then
             terraform destroy -auto-approve
           else
-            terraform apply -auto-approve
+            terraform apply -auto-approve -var="project_name=intro_devops" -var="environment=dev" -var="owner_name=${{ secrets.OWNER_NAME }}" -var="container_registry=all" -var="github_username=${{ github.actor }}" -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" -var='ssh_allowed_cidrs=["0.0.0.0/0"]'
           fi
