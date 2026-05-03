@@ -5,10 +5,18 @@ on:
     branches:
       - actividad_2_4
   workflow_dispatch:
+    inputs:
+      registry:
+        description: "Registry"
+        required: true
+        default: "all"
+        type: choice
+        options: ["ecr", "github", "dockerhub", "all"]
 
 env:
   PROJECT_NAME: intro_devops
   ENVIRONMENT: dev
+  CONTAINER_REGISTRY: all
 
 jobs:
   build:
@@ -16,12 +24,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Test
-        run: echo "Hello World"
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Test Deploy
-        run: echo "Deploying..."
+      - name: Set Choice
+        run: |
+          CHOICE="${{ github.event.inputs.registry || env.CONTAINER_REGISTRY }}"
+          echo "Choice is $CHOICE"
