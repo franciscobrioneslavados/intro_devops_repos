@@ -12,17 +12,10 @@ on:
         default: "all"
         type: choice
         options: ["ecr", "github", "dockerhub", "all"]
-      action:
-        description: "Action"
-        required: true
-        default: "apply"
-        type: choice
-        options: ["apply", "destroy"]
 
 jobs:
   setup-infrastructure:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action != 'destroy')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,18 +28,12 @@ jobs:
           aws-region: us-east-1
       - name: Create Backend Bucket and ECR Repos
         run: |
-          # Obtenemos el Account ID para un bucket único
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           BUCKET_NAME="terraform-state-${ACCOUNT_ID}"
-          
-          echo "Checking S3 bucket: $BUCKET_NAME"
           if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
-            echo "Creating S3 bucket..."
             aws s3api create-bucket --bucket "$BUCKET_NAME" --region us-east-1
             aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" --versioning-configuration Status=Enabled
           fi
-
-          echo "Checking ECR Repositories..."
           for TIER in frontend backend db; do
             REPO_NAME="intro_devops-dev-$TIER"
             if ! aws ecr describe-repositories --repository-names "$REPO_NAME" > /dev/null 2>&1; then
@@ -57,13 +44,9 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     needs: setup-infrastructure
-    if: always() && (needs.setup-infrastructure.result == 'success' || needs.setup-infrastructure.result == 'skipped')
     permissions:
       contents: read
       packages: write
-    env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,11 +67,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Login to Docker Hub
-        if: env.DOCKERHUB_USERNAME != ''
+        if: secrets.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v3
         with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ env.DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and Push
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -107,18 +90,29 @@ jobs:
               docker tag $IMAGE_NAME:latest $GH_IMAGE:latest
               docker push $GH_IMAGE:latest
             fi
-            if [[ ("$REGISTRY_CHOICE" == "dockerhub" || "$REGISTRY_CHOICE" == "all") && -n "$DOCKERHUB_USERNAME" ]]; then
-              DH_IMAGE=$(echo "$DOCKERHUB_USERNAME/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
+            if [[ ("$REGISTRY_CHOICE" == "dockerhub" || "$REGISTRY_CHOICE" == "all") && -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+              DH_IMAGE=$(echo "${{ secrets.DOCKERHUB_USERNAME }}/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
               docker tag $IMAGE_NAME:latest $DH_IMAGE:latest
               docker push $DH_IMAGE:latest
             fi
           done
 
-  terraform:
+  manual-approval:
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
-    environment: production
+    steps:
+      - name: Manual Approval Gate
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ secrets.GITHUB_TOKEN }}
+          approvers: ${{ github.actor }}
+          minimum-approvals: 1
+          issue-title: "Despliegue de Infraestructura Requerido"
+          issue-body: "Por favor, revisa el plan y aprueba el despliegue comentando 'approve' en este issue."
+
+  terraform:
+    runs-on: ubuntu-latest
+    needs: manual-approval
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -131,26 +125,18 @@ jobs:
           aws-region: us-east-1
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-      - name: Terraform Action
+      - name: Terraform Apply
         env:
           TF_VAR_project_name: intro_devops
           TF_VAR_environment: dev
           TF_VAR_owner_name: ${{ secrets.OWNER_NAME }}
-          TF_VAR_container_registry: ${{ github.event.inputs.registry || 'all' }}
+          TF_VAR_container_registry: "all"
           TF_VAR_github_username: ${{ github.repository_owner }}
           TF_VAR_dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
           TF_VAR_ssh_allowed_cidrs: '["0.0.0.0/0"]'
         run: |
-          # Obtenemos el Account ID para el bucket dinámico
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           BUCKET_NAME="terraform-state-${ACCOUNT_ID}"
-          
           cd actividad_2_4
-          # Inicializamos con configuración parcial para el bucket
           terraform init -backend-config="bucket=${BUCKET_NAME}"
-          
-          if [ "${{ github.event.inputs.action || 'apply' }}" == "destroy" ]; then
-            terraform destroy -auto-approve
-          else
-            terraform apply -auto-approve
-          fi
+          terraform apply -auto-approve

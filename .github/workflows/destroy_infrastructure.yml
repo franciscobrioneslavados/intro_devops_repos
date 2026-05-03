@@ -1,0 +1,35 @@
+name: Destroy Infrastructure
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform-destroy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Terraform Destroy
+        env:
+          TF_VAR_project_name: intro_devops
+          TF_VAR_environment: dev
+          TF_VAR_owner_name: ${{ secrets.OWNER_NAME }}
+          TF_VAR_container_registry: "all"
+          TF_VAR_github_username: ${{ github.repository_owner }}
+          TF_VAR_dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+          TF_VAR_ssh_allowed_cidrs: '["0.0.0.0/0"]'
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET_NAME="terraform-state-${ACCOUNT_ID}"
+          cd actividad_2_4
+          terraform init -backend-config="bucket=${BUCKET_NAME}"
+          terraform destroy -auto-approve
