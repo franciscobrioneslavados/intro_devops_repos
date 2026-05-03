@@ -17,9 +17,10 @@ permissions:
   contents: read
   packages: write
   issues: write
+  pull-requests: write
 
 jobs:
-  setup-infrastructure:
+  setup:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,13 +32,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
-      - name: Create Backend Bucket and ECR Repos
+      - name: Setup Resources
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           BUCKET_NAME="terraform-state-${ACCOUNT_ID}"
           if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
             aws s3api create-bucket --bucket "$BUCKET_NAME" --region us-east-1
-            aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" --versioning-configuration Status=Enabled
           fi
           for TIER in frontend backend db; do
             REPO_NAME="intro_devops-dev-$TIER"
@@ -46,9 +46,9 @@ jobs:
             fi
           done
 
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
-    needs: setup-infrastructure
+    needs: setup
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,59 +62,36 @@ jobs:
       - name: Login to ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Login to Docker Hub
-        if: secrets.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and Push
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           REGISTRY_CHOICE: ${{ github.event.inputs.registry || 'all' }}
         run: |
-          NAME_PREFIX="intro_devops-dev"
           for TIER in frontend backend db; do
-            IMAGE_NAME="${NAME_PREFIX}-${TIER}"
+            IMAGE_NAME="intro_devops-dev-$TIER"
             docker build -t $IMAGE_NAME ./actividad_2_4/pet_store/$TIER
             if [[ "$REGISTRY_CHOICE" == "ecr" || "$REGISTRY_CHOICE" == "all" ]]; then
               docker tag $IMAGE_NAME:latest $ECR_REGISTRY/$IMAGE_NAME:latest
               docker push $ECR_REGISTRY/$IMAGE_NAME:latest
             fi
-            if [[ "$REGISTRY_CHOICE" == "github" || "$REGISTRY_CHOICE" == "all" ]]; then
-              GH_IMAGE=$(echo "ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
-              docker tag $IMAGE_NAME:latest $GH_IMAGE:latest
-              docker push $GH_IMAGE:latest
-            fi
-            if [[ ("$REGISTRY_CHOICE" == "dockerhub" || "$REGISTRY_CHOICE" == "all") && -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
-              DH_IMAGE=$(echo "${{ secrets.DOCKERHUB_USERNAME }}/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
-              docker tag $IMAGE_NAME:latest $DH_IMAGE:latest
-              docker push $DH_IMAGE:latest
-            fi
           done
 
-  manual-approval:
+  approve:
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: build
     steps:
-      - name: Manual Approval Gate
+      - name: Approval
         uses: trstringer/manual-approval@v1
         with:
           secret: ${{ secrets.GITHUB_TOKEN }}
           approvers: ${{ github.actor }}
           minimum-approvals: 1
-          issue-title: "Despliegue de Infraestructura Requerido"
-          issue-body: "Por favor, revisa el plan y aprueba el despliegue comentando 'approve' en este issue."
+          issue-title: "Deployment Approval Required"
+          issue-body: "Approve this deployment by commenting 'approve' on this issue."
 
-  terraform:
+  deploy:
     runs-on: ubuntu-latest
-    needs: manual-approval
+    needs: approve
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -127,7 +104,7 @@ jobs:
           aws-region: us-east-1
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-      - name: Terraform Apply
+      - name: Apply
         env:
           TF_VAR_project_name: intro_devops
           TF_VAR_environment: dev
