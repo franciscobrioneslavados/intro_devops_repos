@@ -1,40 +1,15 @@
-name: Build and Deploy
+name: Deploy
 
 on:
   push:
     branches:
       - actividad_2_4
-  workflow_dispatch:
-    inputs:
-      action:
-        description: "Action"
-        required: true
-        default: "apply"
-        type: choice
-        options:
-          - apply
-          - destroy
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
-      - name: Terraform
-        run: |
-          cd actividad_2_4
-          terraform init
-          if [ "${{ inputs.action }}" == "destroy" ]; then
-            terraform destroy -auto-approve
-          else
-            terraform apply -auto-approve -var="project_name=intro_devops" -var="environment=dev" -var="owner_name=${{ secrets.OWNER_NAME }}" -var="container_registry=all" -var="github_username=${{ github.actor }}" -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" -var='ssh_allowed_cidrs=["0.0.0.0/0"]'
-          fi
+      - name: Hello
+        run: echo "Hello"
