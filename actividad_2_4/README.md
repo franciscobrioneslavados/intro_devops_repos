@@ -26,7 +26,7 @@ El proceso de Build y Push ahora está automatizado mediante un flujo de trabajo
 
 ### Control del Registro
 Puedes controlar a qué registro se envían las imágenes de dos formas:
-*   **Automática:** Modificando la variable `CONTAINER_REGISTRY` en `.github/workflows/push_images.yml` (opciones: `ecr`, `github`, `all`).
+*   **Automática:** Modificando la variable `CONTAINER_REGISTRY` en `.github/workflows/push_images.yml` (opciones: `ecr`, `github`, `dockerhub`, `all`).
 *   **Manual:** Al ejecutar el workflow manualmente desde la pestaña **Actions**, podrás elegir el registro de destino en un menú desplegable.
 
 ### Configuración de Secretos en GitHub
@@ -34,6 +34,8 @@ Para que el workflow funcione, debes añadir los siguientes **Secrets** en tu re
 
 *   `AWS_ACCESS_KEY_ID`: Tu llave de acceso de AWS.
 *   `AWS_SECRET_ACCESS_KEY`: Tu llave secreta de AWS.
+*   `DOCKERHUB_USERNAME`: Tu usuario de Docker Hub.
+*   `DOCKERHUB_TOKEN`: Tu token de acceso (PAT) de Docker Hub.
 
 > [!NOTE]
 > El workflow está configurado para ejecutarse automáticamente en la rama `actividad_2_4`, pero también puedes dispararlo manualmente desde la pestaña **Actions**.
