@@ -11,19 +11,13 @@ on:
         required: true
         default: "all"
         type: choice
-        options:
-          - ecr
-          - github
-          - dockerhub
-          - all
+        options: ["ecr", "github", "dockerhub", "all"]
       action:
         description: "Action (apply or destroy)"
         required: true
         default: "apply"
         type: choice
-        options:
-          - apply
-          - destroy
+        options: ["apply", "destroy"]
 
 jobs:
   setup-ecr:
@@ -72,16 +66,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set Registry Choice
         id: set-registry
         run: |
           CHOICE="${{ github.event.inputs.registry }}"
-          if [ -z "$CHOICE" ]; then
-            CHOICE="${{ env.CONTAINER_REGISTRY }}"
-          fi
+          if [ -z "$CHOICE" ]; then CHOICE="${{ env.CONTAINER_REGISTRY }}"; fi
           echo "choice=$CHOICE" >> $GITHUB_OUTPUT
-
       - name: Configure AWS credentials
         if: env.AWS_ACCESS_KEY_ID != ''
         uses: aws-actions/configure-aws-credentials@v4
@@ -90,26 +80,22 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Login to Amazon ECR
         if: env.AWS_ACCESS_KEY_ID != ''
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Login to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Build, tag, and push images
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -119,21 +105,17 @@ jobs:
         run: |
           TIERS=("frontend" "backend" "db")
           for TIER in "${TIERS[@]}"; do
-            echo "Processing $TIER..."
             IMAGE_NAME="${NAME_PREFIX}-${TIER}"
             docker build -t $IMAGE_NAME ./actividad_2_4/pet_store/$TIER
-            
             if [[ ("$REGISTRY_CHOICE" == "ecr" || "$REGISTRY_CHOICE" == "all") && -n "$ECR_REGISTRY" ]]; then
               docker tag $IMAGE_NAME:latest $ECR_REGISTRY/$IMAGE_NAME:latest
               docker push $ECR_REGISTRY/$IMAGE_NAME:latest
             fi
-            
             if [[ "$REGISTRY_CHOICE" == "github" || "$REGISTRY_CHOICE" == "all" ]]; then
               GH_IMAGE_NAME=$(echo "$GHCR_REGISTRY/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
               docker tag $IMAGE_NAME:latest $GH_IMAGE_NAME:latest
               docker push $GH_IMAGE_NAME:latest
             fi
-
             if [[ ("$REGISTRY_CHOICE" == "dockerhub" || "$REGISTRY_CHOICE" == "all") && -n "$DOCKERHUB_USERNAME" ]]; then
               DH_IMAGE_NAME=$(echo "$DOCKERHUB_USERNAME/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
               docker tag $IMAGE_NAME:latest $DH_IMAGE_NAME:latest
@@ -141,7 +123,7 @@ jobs:
             fi
           done
 
-  terraform-deploy:
+  terraform-plan:
     runs-on: ubuntu-latest
     needs: build-and-push
     if: github.event.inputs.action == 'apply' || github.event_name == 'push'
@@ -174,14 +156,46 @@ jobs:
       - name: Terraform Plan
         working-directory: ./actividad_2_4
         run: terraform plan -no-color
+
+  terraform-apply:
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    environment: production
+    if: github.ref == 'refs/heads/actividad_2_4'
+    env:
+      AWS_REGION: us-east-1
+      PROJECT_NAME: intro_devops
+      ENVIRONMENT: dev
+      TF_VAR_project_name: intro_devops
+      TF_VAR_environment: dev
+      TF_VAR_owner_name: ${{ secrets.OWNER_NAME }}
+      TF_VAR_container_registry: 'all'
+      TF_VAR_github_username: ${{ github.repository_owner }}
+      TF_VAR_dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+      TF_VAR_ssh_allowed_cidrs: '["0.0.0.0/0"]'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Terraform Init
+        working-directory: ./actividad_2_4
+        run: terraform init
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/actividad_2_4'
         working-directory: ./actividad_2_4
         run: terraform apply -auto-approve
 
   terraform-destroy:
     runs-on: ubuntu-latest
     if: github.event.inputs.action == 'destroy'
+    environment: production
     env:
       AWS_REGION: us-east-1
       PROJECT_NAME: intro_devops
