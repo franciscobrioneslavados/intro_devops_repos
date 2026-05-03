@@ -20,7 +20,7 @@ on:
         options: ["apply", "destroy"]
 
 jobs:
-  setup-ecr:
+  setup-infrastructure:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action != 'destroy')
     steps:
@@ -33,8 +33,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
-      - name: Create ECR
+      - name: Create Backend Bucket and ECR Repos
         run: |
+          # Obtenemos el Account ID para un bucket único
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET_NAME="terraform-state-${ACCOUNT_ID}"
+          
+          echo "Checking S3 bucket: $BUCKET_NAME"
+          if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+            echo "Creating S3 bucket..."
+            aws s3api create-bucket --bucket "$BUCKET_NAME" --region us-east-1
+            aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" --versioning-configuration Status=Enabled
+          fi
+
+          echo "Checking ECR Repositories..."
           for TIER in frontend backend db; do
             REPO_NAME="intro_devops-dev-$TIER"
             if ! aws ecr describe-repositories --repository-names "$REPO_NAME" > /dev/null 2>&1; then
@@ -44,8 +56,8 @@ jobs:
 
   build-and-push:
     runs-on: ubuntu-latest
-    needs: setup-ecr
-    if: always() && (needs.setup-ecr.result == 'success' || needs.setup-ecr.result == 'skipped')
+    needs: setup-infrastructure
+    if: always() && (needs.setup-infrastructure.result == 'success' || needs.setup-infrastructure.result == 'skipped')
     permissions:
       contents: read
       packages: write
@@ -82,8 +94,9 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           REGISTRY_CHOICE: ${{ github.event.inputs.registry || 'all' }}
         run: |
+          NAME_PREFIX="intro_devops-dev"
           for TIER in frontend backend db; do
-            IMAGE_NAME="intro_devops-dev-$TIER"
+            IMAGE_NAME="${NAME_PREFIX}-${TIER}"
             docker build -t $IMAGE_NAME ./actividad_2_4/pet_store/$TIER
             if [[ "$REGISTRY_CHOICE" == "ecr" || "$REGISTRY_CHOICE" == "all" ]]; then
               docker tag $IMAGE_NAME:latest $ECR_REGISTRY/$IMAGE_NAME:latest
@@ -128,8 +141,14 @@ jobs:
           TF_VAR_dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
           TF_VAR_ssh_allowed_cidrs: '["0.0.0.0/0"]'
         run: |
+          # Obtenemos el Account ID para el bucket dinámico
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET_NAME="terraform-state-${ACCOUNT_ID}"
+          
           cd actividad_2_4
-          terraform init
+          # Inicializamos con configuración parcial para el bucket
+          terraform init -backend-config="bucket=${BUCKET_NAME}"
+          
           if [ "${{ github.event.inputs.action || 'apply' }}" == "destroy" ]; then
             terraform destroy -auto-approve
           else

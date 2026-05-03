@@ -10,6 +10,13 @@ terraform {
       version = "~> 2.4"
     }
   }
+
+  backend "s3" {
+    bucket         = "placeholder" # Se sobreescribe en el pipeline con -backend-config
+    key            = "actividad_2_4/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+  }
 }
 
 provider "aws" {
