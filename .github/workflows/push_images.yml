@@ -12,12 +12,6 @@ on:
         default: "all"
         type: choice
         options: ["ecr", "github", "dockerhub", "all"]
-      action:
-        description: "Action"
-        required: true
-        default: "apply"
-        type: choice
-        options: ["apply", "destroy"]
 
 permissions:
   contents: read
@@ -27,7 +21,6 @@ permissions:
 jobs:
   setup:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action != 'destroy')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,7 +48,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: setup
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action != 'destroy')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,10 +75,8 @@ jobs:
             fi
           done
 
-  approve:
+  approve-deploy:
     runs-on: ubuntu-latest
-    # Se ejecuta si es un apply (vía push o dispatch) O si es un destroy manual
-    if: always() && (needs.build.result == 'success' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'))
     needs: build
     steps:
       - name: Approval
@@ -95,12 +85,12 @@ jobs:
           secret: ${{ secrets.GITHUB_TOKEN }}
           approvers: ${{ github.actor }}
           minimum-approvals: 1
-          issue-title: "${{ github.event.inputs.action == 'destroy' && 'Destruction' || 'Deployment' }} Approval Required"
-          issue-body: "Please approve the ${{ github.event.inputs.action || 'apply' }} by commenting 'approve'."
+          issue-title: "Deployment Approval Required"
+          issue-body: "Approve this deployment by commenting 'approve' on this issue."
 
-  deploy-or-destroy:
+  deploy:
     runs-on: ubuntu-latest
-    needs: approve
+    needs: approve-deploy
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -113,7 +103,7 @@ jobs:
           aws-region: us-east-1
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-      - name: Terraform Action
+      - name: Apply
         env:
           TF_VAR_project_name: intro_devops
           TF_VAR_environment: dev
@@ -127,13 +117,51 @@ jobs:
           BUCKET_NAME="terraform-state-${ACCOUNT_ID}"
           cd actividad_2_4
           terraform init -backend-config="bucket=${BUCKET_NAME}"
-          
-          if [ "${{ github.event.inputs.action }}" == "destroy" ]; then
-            terraform destroy -auto-approve
-            # Cleanup ECR
-            for TIER in frontend backend db; do
-              aws ecr delete-repository --repository-name "intro_devops-dev-$TIER" --force || true
-            done
-          else
-            terraform apply -auto-approve
-          fi
+          terraform apply -auto-approve
+
+  approve-destroy:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: Approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ secrets.GITHUB_TOKEN }}
+          approvers: ${{ github.actor }}
+          minimum-approvals: 1
+          issue-title: "Destruction Approval Required"
+          issue-body: "The app is deployed! When you finish your tests, comment 'approve' here to destroy the infrastructure and clean up AWS."
+
+  destroy:
+    runs-on: ubuntu-latest
+    needs: approve-destroy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Destroy
+        env:
+          TF_VAR_project_name: intro_devops
+          TF_VAR_environment: dev
+          TF_VAR_owner_name: ${{ secrets.OWNER_NAME }}
+          TF_VAR_container_registry: "all"
+          TF_VAR_github_username: ${{ github.repository_owner }}
+          TF_VAR_dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+          TF_VAR_ssh_allowed_cidrs: '["0.0.0.0/0"]'
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET_NAME="terraform-state-${ACCOUNT_ID}"
+          cd actividad_2_4
+          terraform init -backend-config="bucket=${BUCKET_NAME}"
+          terraform destroy -auto-approve
+          for TIER in frontend backend db; do
+            aws ecr delete-repository --repository-name "intro_devops-dev-$TIER" --force || true
+          done
