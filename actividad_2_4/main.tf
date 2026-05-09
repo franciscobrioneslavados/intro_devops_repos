@@ -239,3 +239,45 @@ module "frontend_host" {
   depends_on = [module.backend_host]
 }
 
+# VPC Endpoints for ECR (Suggested by user)
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  security_group_ids  = [aws_security_group.ecr_endpoints.id]
+  subnet_ids          = module.vpc.private_subnets
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  security_group_ids  = [aws_security_group.ecr_endpoints.id]
+  subnet_ids          = module.vpc.private_subnets
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = module.vpc.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = module.vpc.private_route_table_ids
+}
+
+resource "aws_security_group" "ecr_endpoints" {
+  name        = "${local.name_prefix}-ecr-endpoints-sg"
+  description = "Security group for ECR VPC Endpoints"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [module.vpc.vpc_cidr_block]
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-ecr-endpoints-sg"
+  }
+}
