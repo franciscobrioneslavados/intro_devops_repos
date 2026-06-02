@@ -70,7 +70,7 @@ resource "aws_ecr_repository" "app" {
 
   name                 = "${local.name_prefix}-${each.key}"
   image_tag_mutability = "MUTABLE"
-  force_delete         = var.force_delete_ecr
+  force_delete         = true
 
   encryption_configuration {
     encryption_type = "AES256"

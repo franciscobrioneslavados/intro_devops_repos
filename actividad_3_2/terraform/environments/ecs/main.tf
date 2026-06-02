@@ -1,11 +1,16 @@
 locals {
-  name_prefix = "${var.project_name}-${var.environment}"
   vpc_cidr    = var.vpc_cidr
   azs         = ["us-east-1a", "us-east-1b"]
+  name_prefix = "${var.project_name}-${var.environment}"
 
+  arn_task_execution_role = ""
 }
 
 data "aws_caller_identity" "current" {}
+
+# ==============================================================================
+# VPC (Virtual Private Cloud)
+# ==============================================================================
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
@@ -20,7 +25,6 @@ module "vpc" {
 
   private_subnet_names = [for az in local.azs : "${local.name_prefix}-private-${az}"]
   public_subnet_names  = [for az in local.azs : "${local.name_prefix}-public-${az}"]
-
 
   create_igw              = true  # Create Internet Gateway
   enable_nat_gateway      = false # Using custom NAT instance module
@@ -56,17 +60,26 @@ module "nat_instance" {
 }
 
 
+
+# ==============================================================================
+# ECR (Elastic Container Registry)
+# ==============================================================================
+
 resource "aws_ecr_repository" "app" {
   for_each = toset(["frontend", "backend", "db"])
 
   name                 = "${local.name_prefix}-${each.key}"
   image_tag_mutability = "MUTABLE"
-  force_delete         = var.force_delete_ecr
+  force_delete         = true
 
   encryption_configuration {
     encryption_type = "AES256"
   }
 }
+
+# ==============================================================================
+# CloudWatch Log Groups
+# ==============================================================================
 
 resource "aws_cloudwatch_log_group" "app" {
   for_each = toset(["frontend", "backend", "db"])
@@ -75,8 +88,12 @@ resource "aws_cloudwatch_log_group" "app" {
   retention_in_days = 7
 }
 
+# ==============================================================================
+# ECS Cluster
+# ==============================================================================
+
 resource "aws_ecs_cluster" "this" {
-  name = local.name_prefix
+  name = "${local.name_prefix}-cluster"
 
   setting {
     name  = "containerInsights"
@@ -84,55 +101,12 @@ resource "aws_ecs_cluster" "this" {
   }
 }
 
-resource "aws_service_discovery_private_dns_namespace" "this" {
-  name        = "${local.name_prefix}.local"
-  description = "Private service discovery namespace for ${local.name_prefix}."
-  vpc         = module.vpc.vpc_id
-}
-
-resource "aws_service_discovery_service" "db" {
-  name = "tienda-db"
-
-  dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.this.id
-
-    dns_records {
-      ttl  = 10
-      type = "A"
-    }
-
-    routing_policy = "MULTIVALUE"
-  }
-
-  health_check_custom_config {
-    failure_threshold = 1
-  }
-}
-
-resource "aws_iam_role" "task_execution" {
-  name = "${local.name}-task-execution"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "task_execution" {
-  role       = aws_iam_role.task_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
+# ==============================================================================
+# Security Group para ALB
+# ==============================================================================
 
 resource "aws_security_group" "alb" {
-  name        = "${local.name}-alb"
+  name        = "${local.name_prefix}-alb"
   description = "Allow public HTTP traffic to the application ALB."
   vpc_id      = module.vpc.vpc_id
 }
@@ -151,68 +125,12 @@ resource "aws_vpc_security_group_egress_rule" "alb_all" {
   ip_protocol       = "-1"
 }
 
-resource "aws_security_group" "frontend" {
-  name        = "${local.name}-frontend"
-  description = "Allow ALB traffic to frontend ECS tasks."
-  vpc_id      = module.vpc.vpc_id
-}
-
-resource "aws_vpc_security_group_ingress_rule" "frontend_from_alb" {
-  security_group_id            = aws_security_group.frontend.id
-  referenced_security_group_id = aws_security_group.alb.id
-  from_port                    = local.container_ports.frontend
-  ip_protocol                  = "tcp"
-  to_port                      = local.container_ports.frontend
-}
-
-resource "aws_vpc_security_group_egress_rule" "frontend_all" {
-  security_group_id = aws_security_group.frontend.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1"
-}
-
-resource "aws_security_group" "backend" {
-  name        = "${local.name}-backend"
-  description = "Allow ALB traffic to backend ECS tasks."
-  vpc_id      = module.vpc.vpc_id
-}
-
-resource "aws_vpc_security_group_ingress_rule" "backend_from_alb" {
-  security_group_id            = aws_security_group.backend.id
-  referenced_security_group_id = aws_security_group.alb.id
-  from_port                    = local.container_ports.backend
-  ip_protocol                  = "tcp"
-  to_port                      = local.container_ports.backend
-}
-
-resource "aws_vpc_security_group_egress_rule" "backend_all" {
-  security_group_id = aws_security_group.backend.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1"
-}
-
-resource "aws_security_group" "db" {
-  name        = "${local.name}-db"
-  description = "Allow backend ECS tasks to reach MySQL."
-  vpc_id      = module.vpc.vpc_id
-}
-
-resource "aws_vpc_security_group_ingress_rule" "db_from_backend" {
-  security_group_id            = aws_security_group.db.id
-  referenced_security_group_id = aws_security_group.backend.id
-  from_port                    = local.container_ports.db
-  ip_protocol                  = "tcp"
-  to_port                      = local.container_ports.db
-}
-
-resource "aws_vpc_security_group_egress_rule" "db_all" {
-  security_group_id = aws_security_group.db.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1"
-}
+# ==============================================================================
+# ALB (Application Load Balancer)
+# ==============================================================================
 
 resource "aws_lb" "this" {
-  name               = local.name
+  name               = local.name_prefix
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -220,8 +138,8 @@ resource "aws_lb" "this" {
 }
 
 resource "aws_lb_target_group" "frontend" {
-  name        = "${local.name}-frontend"
-  port        = local.container_ports.frontend
+  name        = "${local.name_prefix}-frontend"
+  port        = 80
   protocol    = "HTTP"
   target_type = "ip"
   vpc_id      = module.vpc.vpc_id
@@ -238,8 +156,8 @@ resource "aws_lb_target_group" "frontend" {
 }
 
 resource "aws_lb_target_group" "backend" {
-  name        = "${local.name}-backend"
-  port        = local.container_ports.backend
+  name        = "${local.name_prefix}-backend"
+  port        = 8080
   protocol    = "HTTP"
   target_type = "ip"
   vpc_id      = module.vpc.vpc_id
@@ -252,6 +170,41 @@ resource "aws_lb_target_group" "backend" {
     path                = "/api/health"
     timeout             = 5
     unhealthy_threshold = 3
+  }
+}
+
+resource "aws_lb" "db_nlb" {
+  name               = "${local.name_prefix}-db-nlb"
+  internal           = true
+  load_balancer_type = "network"
+  subnets            = module.vpc.private_subnets
+  tags = {
+    Name = "${local.name_prefix}-db-nlb"
+  }
+}
+
+resource "aws_lb_target_group" "db" {
+  name        = "${local.name_prefix}-db-tg"
+  port        = 3306
+  protocol    = "TCP"
+  vpc_id      = module.vpc.vpc_id
+  target_type = "ip"
+  health_check {
+    protocol = "TCP"
+    port     = "3306"
+    interval = 30
+    timeout  = 10
+  }
+}
+
+resource "aws_lb_listener" "db" {
+  load_balancer_arn = aws_lb.db_nlb.arn
+  port              = 3306
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.db.arn
   }
 }
 
@@ -282,248 +235,143 @@ resource "aws_lb_listener_rule" "api" {
   }
 }
 
-resource "aws_ecs_task_definition" "db" {
-  family                   = "${local.name}-db"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = 512
-  memory                   = 1024
-  execution_role_arn       = aws_iam_role.task_execution.arn
+# ==============================================================================
+# Servicios de ECS y Definición de Tareas (Modularizados para Reutilización)
+# ==============================================================================
 
-  container_definitions = jsonencode([
+# 1. API Backend Service
+module "backend_service" {
+  source = "./modules/ecs-service"
+
+  name                    = "${local.name_prefix}-backend"
+  cluster_id              = aws_ecs_cluster.this.id
+  cluster_name            = aws_ecs_cluster.this.name
+  vpc_id                  = module.vpc.vpc_id
+  subnets                 = module.vpc.private_subnets
+  task_execution_role_arn = local.arn_task_execution_role
+
+  cpu             = 512
+  memory          = 1024
+  container_image = "891377192530.dkr.ecr.us-east-1.amazonaws.com/intro-devops-lab-backend:ecs-v1"
+  container_port  = 8080
+  log_group_name  = aws_cloudwatch_log_group.app["backend"].name
+  aws_region      = var.aws_region
+  desired_count   = 2
+
+  environment_variables = [
     {
-      name      = "db"
-      image     = "${aws_ecr_repository.app["db"].repository_url}:${var.image_tag}"
-      essential = true
-      portMappings = [
-        {
-          containerPort = local.container_ports.db
-          hostPort      = local.container_ports.db
-          protocol      = "tcp"
-        }
-      ]
-      environment = [
-        {
-          name  = "MYSQL_ROOT_PASSWORD"
-          value = var.mysql_root_password
-        }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.app["db"].name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
-        }
-      }
-    }
-  ])
-}
-
-resource "aws_ecs_task_definition" "backend" {
-  family                   = "${local.name}-backend"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = 512
-  memory                   = 1024
-  execution_role_arn       = aws_iam_role.task_execution.arn
-
-  container_definitions = jsonencode([
+      name  = "DB_HOST"
+      value = "${aws_lb.db_nlb.dns_name}"
+    },
     {
-      name      = "backend"
-      image     = "${aws_ecr_repository.app["backend"].repository_url}:${var.image_tag}"
-      essential = true
-      portMappings = [
-        {
-          containerPort = local.container_ports.backend
-          hostPort      = local.container_ports.backend
-          protocol      = "tcp"
-        }
-      ]
-      environment = [
-        {
-          name  = "DB_HOST"
-          value = "${aws_service_discovery_service.db.name}.${aws_service_discovery_private_dns_namespace.this.name}"
-        },
-        {
-          name  = "DB_USER"
-          value = "root"
-        },
-        {
-          name  = "DB_PASSWORD"
-          value = var.mysql_root_password
-        },
-        {
-          name  = "DB_NAME"
-          value = "tienda_perritos"
-        },
-        {
-          name  = "DB_PORT"
-          value = tostring(local.container_ports.db)
-        }
-      ]
-      healthCheck = {
-        command     = ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 30
-      }
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.app["backend"].name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
-        }
-      }
-    }
-  ])
-}
-
-resource "aws_ecs_task_definition" "frontend" {
-  family                   = "${local.name}-frontend"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = 256
-  memory                   = 512
-  execution_role_arn       = aws_iam_role.task_execution.arn
-
-  container_definitions = jsonencode([
+      name  = "DB_USER"
+      value = "root"
+    },
     {
-      name      = "frontend"
-      image     = "${aws_ecr_repository.app["frontend"].repository_url}:${var.image_tag}"
-      essential = true
-      portMappings = [
-        {
-          containerPort = local.container_ports.frontend
-          hostPort      = local.container_ports.frontend
-          protocol      = "tcp"
-        }
-      ]
-      healthCheck = {
-        command     = ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 15
-      }
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.app["frontend"].name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
-        }
-      }
+      name  = "DB_PASSWORD"
+      value = var.mysql_root_password
+    },
+    {
+      name  = "DB_NAME"
+      value = "tienda_perritos"
+    },
+    {
+      name  = "DB_PORT"
+      value = 3306
     }
-  ])
-}
+  ]
 
-resource "aws_ecs_service" "db" {
-  name            = "tienda-db"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.db.arn
-  desired_count   = var.db_desired_count
-  launch_type     = "FARGATE"
+  health_check_command = ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+  target_group_arn     = aws_lb_target_group.backend.arn
 
-  network_configuration {
-    assign_public_ip = false
-    security_groups  = [aws_security_group.db.id]
-    subnets          = module.vpc.private_subnets
-  }
+  allowed_ingress_security_groups = [
+    {
+      security_group_id = aws_security_group.alb.id
+      port              = 8080
+    }
+  ]
 
-  service_registries {
-    registry_arn = aws_service_discovery_service.db.arn
-  }
-
-  wait_for_steady_state = false
-}
-
-resource "aws_ecs_service" "backend" {
-  name            = "tienda-backend"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.backend.arn
-  desired_count   = var.backend_desired_count
-  launch_type     = "FARGATE"
-
-  network_configuration {
-    assign_public_ip = false
-    security_groups  = [aws_security_group.backend.id]
-    subnets          = module.vpc.private_subnets
-  }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.backend.arn
-    container_name   = "backend"
-    container_port   = local.container_ports.backend
-  }
-
-  wait_for_steady_state = false
+  enable_autoscaling = true
+  min_capacity       = 2
+  max_capacity       = 10
+  cpu_target_value   = 70
 
   depends_on = [
-    aws_ecs_service.db,
     aws_lb_listener_rule.api
   ]
 }
 
-resource "aws_ecs_service" "frontend" {
-  name            = "tienda-frontend"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.frontend.arn
-  desired_count   = var.frontend_desired_count
-  launch_type     = "FARGATE"
+# 2. Base de Datos (MySQL) Service
+module "db_service" {
+  source = "./modules/ecs-service"
 
-  network_configuration {
-    assign_public_ip = false
-    security_groups  = [aws_security_group.frontend.id]
-    subnets          = module.vpc.private_subnets
-  }
+  name                    = "${local.name_prefix}-db"
+  cluster_id              = aws_ecs_cluster.this.id
+  cluster_name            = aws_ecs_cluster.this.name
+  vpc_id                  = module.vpc.vpc_id
+  subnets                 = module.vpc.private_subnets
+  task_execution_role_arn = local.arn_task_execution_role
 
-  load_balancer {
-    target_group_arn = aws_lb_target_group.frontend.arn
-    container_name   = "frontend"
-    container_port   = local.container_ports.frontend
-  }
+  cpu             = 512
+  memory          = 1024
+  container_image = "891377192530.dkr.ecr.us-east-1.amazonaws.com/intro-devops-lab-db:ecs-v1"
+  container_port  = 3306
+  log_group_name  = aws_cloudwatch_log_group.app["db"].name
+  aws_region      = var.aws_region
+  desired_count   = 2
 
-  wait_for_steady_state = false
+  environment_variables = [
+    {
+      name  = "MYSQL_ROOT_PASSWORD"
+      value = var.mysql_root_password
+    }
+  ]
 
-  depends_on = [aws_lb_listener.http]
+  target_group_arn = aws_lb_target_group.db.arn
+
+  allowed_ingress_security_groups = [
+    {
+      security_group_id = module.backend_service.security_group_id
+      port              = 3306
+    }
+  ]
 }
 
-resource "aws_appautoscaling_target" "service" {
-  for_each = {
-    frontend = {
-      min = 2
-      max = 6
+# 3. Frontend Web Service
+module "frontend_service" {
+  source = "./modules/ecs-service"
+
+  name                    = "${local.name_prefix}-frontend"
+  cluster_id              = aws_ecs_cluster.this.id
+  cluster_name            = aws_ecs_cluster.this.name
+  vpc_id                  = module.vpc.vpc_id
+  subnets                 = module.vpc.public_subnets
+  task_execution_role_arn = local.arn_task_execution_role
+
+  cpu             = 256
+  memory          = 512
+  container_image = "891377192530.dkr.ecr.us-east-1.amazonaws.com/intro-devops-lab-frontend:ecs-v1"
+  container_port  = 80
+  log_group_name  = aws_cloudwatch_log_group.app["frontend"].name
+  aws_region      = var.aws_region
+  desired_count   = 2
+
+  health_check_command = ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
+  target_group_arn     = aws_lb_target_group.frontend.arn
+
+  allowed_ingress_security_groups = [
+    {
+      security_group_id = aws_security_group.alb.id
+      port              = 80
     }
-    backend = {
-      min = 2
-      max = 10
-    }
-  }
+  ]
 
-  max_capacity       = each.value.max
-  min_capacity       = each.value.min
-  resource_id        = "service/${aws_ecs_cluster.this.name}/${each.key == "frontend" ? aws_ecs_service.frontend.name : aws_ecs_service.backend.name}"
-  scalable_dimension = "ecs:service:DesiredCount"
-  service_namespace  = "ecs"
-}
+  enable_autoscaling = true
+  min_capacity       = 2
+  max_capacity       = 6
+  cpu_target_value   = 60
 
-resource "aws_appautoscaling_policy" "cpu" {
-  for_each = aws_appautoscaling_target.service
-
-  name               = "${local.name}-${each.key}-cpu"
-  policy_type        = "TargetTrackingScaling"
-  resource_id        = each.value.resource_id
-  scalable_dimension = each.value.scalable_dimension
-  service_namespace  = each.value.service_namespace
-
-  target_tracking_scaling_policy_configuration {
-    target_value = each.key == "frontend" ? 60 : 70
-
-    predefined_metric_specification {
-      predefined_metric_type = "ECSServiceAverageCPUUtilization"
-    }
-  }
+  depends_on = [
+    aws_lb_listener.http
+  ]
 }

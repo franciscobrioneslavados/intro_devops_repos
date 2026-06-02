@@ -85,9 +85,3 @@ variable "mysql_root_password" {
   default     = "admin123"
   sensitive   = true
 }
-
-variable "force_delete_ecr" {
-  description = "Allow Terraform to delete non-empty ECR repositories in lab environments."
-  type        = bool
-  default     = true
-}

@@ -18,7 +18,4 @@ output "ecr_repository_urls" {
   value       = { for name, repo in aws_ecr_repository.app : name => repo.repository_url }
 }
 
-output "service_discovery_namespace" {
-  description = "Private DNS namespace used by ECS services."
-  value       = aws_service_discovery_private_dns_namespace.this.name
-}
+
