@@ -3,7 +3,7 @@ locals {
   azs         = ["us-east-1a", "us-east-1b"]
   name_prefix = "${var.project_name}-${var.environment}"
 
-  arn_task_execution_role = ""
+  arn_task_execution_role = "arn:aws:iam::891377192530:role/LabRole"
 }
 
 data "aws_caller_identity" "current" {}
@@ -260,6 +260,10 @@ module "backend_service" {
 
   environment_variables = [
     {
+      name  = "PORT"
+      value = "8080"
+    },
+    {
       name  = "DB_HOST"
       value = "${aws_lb.db_nlb.dns_name}"
     },
@@ -281,7 +285,7 @@ module "backend_service" {
     }
   ]
 
-  health_check_command = ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+  health_check_command = ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health || exit 1"]
   target_group_arn     = aws_lb_target_group.backend.arn
 
   allowed_ingress_security_groups = [
@@ -345,7 +349,7 @@ module "frontend_service" {
   cluster_id              = aws_ecs_cluster.this.id
   cluster_name            = aws_ecs_cluster.this.name
   vpc_id                  = module.vpc.vpc_id
-  subnets                 = module.vpc.public_subnets
+  subnets                 = module.vpc.private_subnets
   task_execution_role_arn = local.arn_task_execution_role
 
   cpu             = 256
@@ -374,4 +378,64 @@ module "frontend_service" {
   depends_on = [
     aws_lb_listener.http
   ]
+}
+
+# Regla adicional para permitir health checks del NLB a la Base de Datos
+resource "aws_vpc_security_group_ingress_rule" "db_nlb_health_check" {
+  security_group_id = module.db_service.security_group_id
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = 3306
+  to_port           = 3306
+  ip_protocol       = "tcp"
+}
+
+# VPC Endpoints for ECR (Suggested by user)
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  security_group_ids  = [aws_security_group.ecr_endpoints.id]
+  subnet_ids          = module.vpc.private_subnets
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  security_group_ids  = [aws_security_group.ecr_endpoints.id]
+  subnet_ids          = module.vpc.private_subnets
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = module.vpc.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = module.vpc.private_route_table_ids
+}
+
+resource "aws_security_group" "ecr_endpoints" {
+  name        = "${local.name_prefix}-ecr-endpoints-sg"
+  description = "Security group for ECR VPC Endpoints"
+  vpc_id      = module.vpc.vpc_id
+
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [module.vpc.vpc_cidr_block]
+  }
+
+  egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-ecr-endpoints-sg"
+  }
 }
